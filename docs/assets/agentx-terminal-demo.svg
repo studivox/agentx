@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" width="100%" height="100%">
+  <defs>
+    <linearGradient id="termBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#07111F"/>
+      <stop offset="100%" stop-color="#0A1322"/>
+    </linearGradient>
+
+    <linearGradient id="termBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#43D9FF" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .t-header { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 600; fill: #94A3B8; }
+    .t-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.5; }
+    .t-dim { fill: #64748B; }
+    .t-white { fill: #F8FAFC; }
+    .t-cyan { fill: #43D9FF; }
+    .t-mint { fill: #2DD4BF; }
+    .t-violet { fill: #A78BFA; }
+    .t-amber { fill: #F59E0B; }
+    .t-rose { fill: #FB7185; }
+    .t-badge { font-weight: bold; }
+  </style>
+
+  <!-- Outer Window Shell -->
+  <rect x="0" y="0" width="1200" height="580" rx="14" fill="url(#termBg)"/>
+  <rect x="0" y="0" width="1200" height="580" rx="14" fill="none" stroke="url(#termBorder)" stroke-width="1.5"/>
+
+  <!-- Top Title Bar -->
+  <rect x="0" y="0" width="1200" height="42" rx="14" fill="#0D1A30"/>
+  <rect x="0" y="24" width="1200" height="18" fill="#0D1A30"/>
+  <line x1="0" y1="42" x2="1200" y2="42" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- Window Dots -->
+  <circle cx="24" cy="21" r="6" fill="#FB7185"/>
+  <circle cx="44" cy="21" r="6" fill="#F59E0B"/>
+  <circle cx="64" cy="21" r="6" fill="#2DD4BF"/>
+
+  <text x="100" y="26" class="t-header">Terminal — <tspan fill="#F8FAFC">npm run demo</tspan> — AgentX Flagship Verification Bed</text>
+  <text x="1060" y="26" class="t-code t-dim">zsh • 80x24</text>
+
+  <!-- Terminal Output Lines -->
+  <g transform="translate(30, 70)">
+
+    <!-- Command Prompt -->
+    <text x="0" y="0" class="t-code t-mint t-badge">$ <tspan class="t-white">npm run demo</tspan></text>
+    <text x="0" y="20" class="t-code t-dim">========================================================================================</text>
+    <text x="0" y="38" class="t-code t-cyan t-badge">          AgentX Flagship Reliability &amp; Replay Prevention Verification</text>
+    <text x="0" y="56" class="t-code t-dim">========================================================================================</text>
+
+    <!-- Scenario 1 -->
+    <g transform="translate(0, 80)">
+      <text x="0" y="0" class="t-code t-cyan t-badge">[Scenario 1] Executing First Mutating Request: book_appointment</text>
+      <text x="16" y="20" class="t-code t-dim">  [Mock Server RPC] Executing tool: book_appointment (Call #1)</text>
+      <text x="16" y="38" class="t-code t-mint">[AgentX] [INFO] Transaction tx_6f2846ab committed successfully.</text>
+      <text x="16" y="56" class="t-code t-white">  [+] Receipt: <tspan class="t-cyan">rcpt_87127ca2e828421c</tspan> · State: <tspan class="t-mint t-badge">COMMITTED</tspan> · Replay: false · RPC Calls: <tspan class="t-mint t-badge">1</tspan></text>
+      <text x="16" y="74" class="t-code t-dim">  [+] Scrubbed Args: {"patientId":"p_4081","phone":"<tspan class="t-amber">[REDACTED]</tspan>","note":"<tspan class="t-amber">[REDACTED]</tspan>"}</text>
+    </g>
+
+    <!-- Scenario 2 -->
+    <g transform="translate(0, 180)">
+      <text x="0" y="0" class="t-code t-violet t-badge">[Scenario 2] Agent Re-invokes Same Tool with Reordered JSON (Simulating Blind Retry)...</text>
+      <text x="16" y="20" class="t-code t-violet">[AgentX] [INFO] Idempotent hit for book_appointment (SHA-256: 01c86a62c0...). Returning cached receipt.</text>
+      <text x="16" y="38" class="t-code t-mint">  [✓] AgentX Intercepted Duplicate Call!</text>
+      <text x="16" y="56" class="t-code t-white">  [✓] Idempotent Replay Flag: <tspan class="t-violet t-badge">true</tspan> · Server Call Count Delta: <tspan class="t-mint t-badge">0 (ZERO additional calls sent!)</tspan></text>
+    </g>
+
+    <!-- Scenario 3 -->
+    <g transform="translate(0, 260)">
+      <text x="0" y="0" class="t-code t-amber t-badge">[Scenario 3] Simulating Ambiguous Outcome (Timeout on booking, but state created remotely)...</text>
+      <text x="16" y="20" class="t-code t-rose">  [AgentX] [WARN] Attempt 1 for tx_2432f6de failed with error: Connection reset / ETIMEDOUT</text>
+      <text x="16" y="38" class="t-code t-amber">[AgentX] [INFO] Starting postcondition verification using verifier: get_appointment</text>
+      <text x="16" y="56" class="t-code t-mint">[AgentX] [INFO] Postcondition verification proved tx_2432f6de was already COMMITTED!</text>
+      <text x="16" y="74" class="t-code t-white">  [✓] Reconciled State: <tspan class="t-mint t-badge">COMMITTED</tspan> · Evidence: {"appointmentId":"appt_9921","status":"CONFIRMED"}</text>
+    </g>
+
+    <!-- Scenario 4 -->
+    <g transform="translate(0, 360)">
+      <text x="0" y="0" class="t-code t-rose t-badge">[Scenario 4] Executing Saga Compensation for first appointment...</text>
+      <text x="16" y="20" class="t-code t-violet">[AgentX] [INFO] Executing compensation for transaction tx_6f2846ab using tool cancel_appointment</text>
+      <text x="16" y="38" class="t-code t-mint">[AgentX] [INFO] Compensation finished: status=SUCCESS, finalState=COMPENSATED</text>
+      <text x="16" y="56" class="t-code t-white">  [✓] Final Ledger State: <tspan class="t-violet t-badge">COMPENSATED</tspan> · Store Count: 2 (Appointment cleanly rolled back)</text>
+    </g>
+
+    <!-- Footer -->
+    <g transform="translate(0, 440)">
+      <text x="0" y="0" class="t-code t-dim">========================================================================================</text>
+      <text x="0" y="18" class="t-code t-mint t-badge">  [✓] All 4 Invariants Proved: Execute-Once, Replay Protection, Active Verification, Saga Rollback</text>
+    </g>
+  </g>
+</svg>
