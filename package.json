@@ -1,0 +1,49 @@
+{
+  "name": "agenttx",
+  "version": "1.0.0",
+  "description": "Local-first transactional reliability layer and proxy for Model Context Protocol (MCP) tool execution",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agenttx": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/ tests/",
+    "typecheck": "tsc --noEmit",
+    "demo": "tsx examples/demo-client.ts"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "transaction",
+    "idempotency",
+    "reliability",
+    "ai-agents",
+    "saga",
+    "sqlite"
+  ],
+  "author": "AgentTX Core Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^12.11.1",
+    "commander": "^14.0.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "eslint": "^10.9.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

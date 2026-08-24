@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "serverName": "clinic-payment-service",
+  "ledgerPath": ".agenttx/demo_agenttx.db",
+  "defaultPolicy": {
+    "timeoutMs": 5000,
+    "maxRetries": 2,
+    "ttlSeconds": 604800
+  },
+  "tools": {
+    "get_appointment": {
+      "toolName": "get_appointment",
+      "riskLevel": "READ_ONLY",
+      "timeoutMs": 3000,
+      "maxRetries": 3,
+      "ttlSeconds": 86400,
+      "sensitiveFields": []
+    },
+    "book_appointment": {
+      "toolName": "book_appointment",
+      "riskLevel": "MUTATING_CRITICAL",
+      "logicalKeys": ["patientId", "doctorId", "date", "slot"],
+      "timeoutMs": 4000,
+      "maxRetries": 2,
+      "sensitiveFields": ["patientPhone", "medicalNote"],
+      "verifier": {
+        "toolName": "get_appointment",
+        "argumentMapping": {
+          "patientId": "patientId",
+          "date": "date"
+        },
+        "matchKeyPath": "status",
+        "expectedValue": "CONFIRMED"
+      },
+      "compensator": {
+        "toolName": "cancel_appointment",
+        "argumentMapping": {
+          "appointmentId": "result.appointmentId"
+        }
+      }
+    },
+    "cancel_appointment": {
+      "toolName": "cancel_appointment",
+      "riskLevel": "MUTATING_SAFE",
+      "logicalKeys": ["appointmentId"],
+      "timeoutMs": 4000,
+      "maxRetries": 2,
+      "sensitiveFields": []
+    },
+    "process_payment": {
+      "toolName": "process_payment",
+      "riskLevel": "MUTATING_CRITICAL",
+      "logicalKeys": ["customerId", "orderId", "amount"],
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "sensitiveFields": ["cardNumber", "cvv"],
+      "verifier": {
+        "toolName": "get_payment",
+        "argumentMapping": {
+          "orderId": "orderId"
+        }
+      },
+      "compensator": {
+        "toolName": "refund_payment",
+        "argumentMapping": {
+          "paymentId": "result.paymentId"
+        }
+      }
+    }
+  }
+}
