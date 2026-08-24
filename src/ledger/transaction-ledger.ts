@@ -68,21 +68,33 @@ export class TransactionLedger {
       )
     `);
 
-    stmt.run(
-      id,
-      params.fingerprint,
-      params.toolName,
-      'PENDING',
-      params.riskLevel,
-      now,
-      now,
-      expiresAt,
-      JSON.stringify(params.rawArguments),
-      JSON.stringify(sanitized),
-      params.metadata ? JSON.stringify(params.metadata) : null
-    );
+    const sanitizedMeta = params.metadata ? redactSensitiveData(params.metadata, params.sensitiveFields) : null;
 
-    return this.getTransactionById(id)!;
+    try {
+      stmt.run(
+        id,
+        params.fingerprint,
+        params.toolName,
+        'PENDING',
+        params.riskLevel,
+        now,
+        now,
+        expiresAt,
+        JSON.stringify(sanitized),
+        JSON.stringify(sanitized),
+        sanitizedMeta ? JSON.stringify(sanitizedMeta) : null
+      );
+
+      return this.getTransactionById(id)!;
+    } catch (err: any) {
+      if (err && typeof err.message === 'string' && err.message.includes('UNIQUE constraint failed')) {
+        const existing = this.getTransactionByFingerprint(params.fingerprint);
+        if (existing) {
+          return existing;
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -147,12 +159,16 @@ export class TransactionLedger {
       WHERE id = ?
     `);
 
+    const sanitizedResult = extra?.resultPayload ? redactSensitiveData(extra.resultPayload) : null;
+    const sanitizedError = extra?.errorPayload ? redactSensitiveData(extra.errorPayload) : null;
+    const sanitizedReceipt = extra?.receipt ? redactSensitiveData(extra.receipt) : null;
+
     stmt.run(
       state,
       now,
-      extra?.resultPayload ? JSON.stringify(extra.resultPayload) : null,
-      extra?.errorPayload ? JSON.stringify(extra.errorPayload) : null,
-      extra?.receipt ? JSON.stringify(extra.receipt) : null,
+      sanitizedResult ? JSON.stringify(sanitizedResult) : null,
+      sanitizedError ? JSON.stringify(sanitizedError) : null,
+      sanitizedReceipt ? JSON.stringify(sanitizedReceipt) : null,
       id
     );
 
@@ -173,6 +189,15 @@ export class TransactionLedger {
       )
     `);
 
+    let sanitizedSnippet = attempt.responseSnippet;
+    if (sanitizedSnippet) {
+      try {
+        sanitizedSnippet = JSON.stringify(redactSensitiveData(JSON.parse(sanitizedSnippet)));
+      } catch {
+        sanitizedSnippet = redactSensitiveData({ snippet: sanitizedSnippet }).snippet as string;
+      }
+    }
+
     stmt.run(
       id,
       attempt.transactionId,
@@ -182,7 +207,7 @@ export class TransactionLedger {
       attempt.status,
       attempt.durationMs || null,
       attempt.errorMessage || null,
-      attempt.responseSnippet || null
+      sanitizedSnippet || null
     );
 
     return {
@@ -222,13 +247,15 @@ export class TransactionLedger {
       )
     `);
 
+    const sanitizedEvidence = redactSensitiveData(verification.evidence);
+
     stmt.run(
       id,
       verification.transactionId,
       verification.verifierTool,
       verification.verifiedAt,
       verification.outcome,
-      JSON.stringify(verification.evidence),
+      JSON.stringify(sanitizedEvidence),
       verification.notes || null
     );
 
@@ -285,13 +312,15 @@ export class TransactionLedger {
       )
     `);
 
+    const sanitizedResult = compensation.result ? redactSensitiveData(compensation.result) : null;
+
     stmt.run(
       id,
       compensation.transactionId,
       compensation.compensatorTool,
       compensation.attemptedAt,
       compensation.status,
-      compensation.result ? JSON.stringify(compensation.result) : null,
+      sanitizedResult ? JSON.stringify(sanitizedResult) : null,
       compensation.errorMessage || null
     );
 
@@ -337,25 +366,20 @@ export class TransactionLedger {
   }
 
   /**
-   * Generates or fetches an evidence-backed receipt for a transaction.
+   * Generates an evidence-backed JSON receipt for a transaction.
    */
-  public generateReceipt(transactionId: string, isReplay: boolean = false): Receipt {
+  public generateReceipt(transactionId: string, isReplay = false): Receipt {
     const tx = this.getTransactionById(transactionId);
     if (!tx) {
-      throw new Error(`Transaction not found: ${transactionId}`);
-    }
-
-    if (tx.receiptJson && isReplay) {
-      const stored = JSON.parse(tx.receiptJson) as Receipt;
-      return {
-        ...stored,
-        idempotentReplay: true,
-      };
+      throw new Error(`Transaction ${transactionId} not found`);
     }
 
     const attempts = this.getAttemptsForTransaction(transactionId);
     const verifications = this.getVerificationsForTransaction(transactionId);
     const compensations = this.getCompensationsForTransaction(transactionId);
+
+    const latestVerification = verifications.length > 0 ? verifications[verifications.length - 1] : undefined;
+    const latestAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : undefined;
 
     const receipt: Receipt = {
       receiptId: `rcpt_${randomUUID().replace(/-/g, '')}`,
@@ -366,23 +390,38 @@ export class TransactionLedger {
       riskLevel: tx.riskLevel,
       idempotentReplay: isReplay,
       createdAt: tx.createdAt,
-      committedAt: tx.state === 'COMMITTED' ? tx.updatedAt : undefined,
+      committedAt: tx.state === 'COMMITTED' ? (tx.updatedAt || tx.createdAt) : undefined,
       sanitizedArguments: JSON.parse(tx.sanitizedArguments),
       result: tx.resultPayload ? JSON.parse(tx.resultPayload) : undefined,
       attemptsCount: attempts.length,
-      verificationEvidence: verifications.length > 0 ? verifications[verifications.length - 1].evidence : undefined,
+      verificationEvidence: latestVerification?.evidence,
       compensationHistory: compensations.length > 0 ? compensations : undefined,
     };
 
-    this.updateTransactionState(transactionId, tx.state, { receipt });
     return receipt;
   }
 
   /**
-   * Lists transactions according to optional filters.
+   * Lists transactions with optional state and tool filters.
    */
   public listTransactions(filter: ListTransactionsFilter = {}): TransactionRecord[] {
-    let sql = `
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filter.state) {
+      conditions.push('state = ?');
+      params.push(filter.state);
+    }
+
+    if (filter.toolName) {
+      conditions.push('tool_name = ?');
+      params.push(filter.toolName);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitClause = `LIMIT ${filter.limit || 50} OFFSET ${filter.offset || 0}`;
+
+    const stmt = this.db.prepare(`
       SELECT 
         id, fingerprint, tool_name as toolName, state, risk_level as riskLevel,
         created_at as createdAt, updated_at as updatedAt, expires_at as expiresAt,
@@ -390,31 +429,11 @@ export class TransactionLedger {
         result_payload as resultPayload, error_payload as errorPayload,
         receipt_json as receiptJson, metadata_json as metadataJson
       FROM transactions
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+      ${whereClause}
+      ORDER BY created_at DESC
+      ${limitClause}
+    `);
 
-    if (filter.state) {
-      sql += ` AND state = ?`;
-      params.push(filter.state);
-    }
-    if (filter.toolName) {
-      sql += ` AND tool_name = ?`;
-      params.push(filter.toolName);
-    }
-
-    sql += ` ORDER BY created_at DESC`;
-
-    if (filter.limit) {
-      sql += ` LIMIT ?`;
-      params.push(filter.limit);
-    }
-    if (filter.offset) {
-      sql += ` OFFSET ?`;
-      params.push(filter.offset);
-    }
-
-    const stmt = this.db.prepare(sql);
     return stmt.all(...params) as TransactionRecord[];
   }
 }

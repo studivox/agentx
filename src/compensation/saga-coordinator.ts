@@ -17,6 +17,36 @@ export interface CompensationResult {
   updatedTransaction: TransactionRecord;
 }
 
+function extractFromResult(resultPayload: Record<string, unknown> | undefined, key: string): unknown {
+  if (!resultPayload) return undefined;
+  if (key in resultPayload) return resultPayload[key];
+
+  if (resultPayload.response && typeof resultPayload.response === 'object') {
+    const resp = resultPayload.response as Record<string, unknown>;
+    if (key in resp) return resp[key];
+    if (Array.isArray(resp.content) && resp.content[0]?.text) {
+      try {
+        const parsed = JSON.parse(resp.content[0].text);
+        if (parsed && typeof parsed === 'object' && key in parsed) {
+          return parsed[key];
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (resultPayload.evidence && typeof resultPayload.evidence === 'object') {
+    const ev = resultPayload.evidence as Record<string, unknown>;
+    if (key in ev) return ev[key];
+    if (ev.response && typeof ev.response === 'object' && key in (ev.response as Record<string, unknown>)) {
+      return (ev.response as Record<string, unknown>)[key];
+    }
+  }
+
+  return undefined;
+}
+
 export class SagaCoordinator {
   private ledger: TransactionLedger;
 
@@ -39,10 +69,11 @@ export class SagaCoordinator {
     }
 
     for (const [targetKey, sourcePath] of Object.entries(compensatorConfig.argumentMapping)) {
-      if (sourcePath.startsWith('result.') && resultPayload) {
+      if (sourcePath.startsWith('result.')) {
         const key = sourcePath.replace('result.', '');
-        if (key in resultPayload) {
-          compArgs[targetKey] = resultPayload[key];
+        const val = extractFromResult(resultPayload, key);
+        if (val !== undefined) {
+          compArgs[targetKey] = val;
         }
       } else if (sourcePath in originalArgs) {
         compArgs[targetKey] = originalArgs[sourcePath];
@@ -68,7 +99,7 @@ export class SagaCoordinator {
     this.ledger.updateTransactionState(transactionId, 'COMPENSATING');
     logger.info(`Executing compensation for transaction ${tx.id} using tool ${compensatorConfig.toolName}`);
 
-    const originalArgs = JSON.parse(tx.rawArguments) as Record<string, unknown>;
+    const originalArgs = JSON.parse(tx.sanitizedArguments) as Record<string, unknown>;
     const resultPayload = tx.resultPayload ? (JSON.parse(tx.resultPayload) as Record<string, unknown>) : undefined;
     const compArgs = this.buildCompensatorArguments(compensatorConfig, originalArgs, resultPayload);
     const now = new Date().toISOString();

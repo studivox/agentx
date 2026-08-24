@@ -14,6 +14,7 @@ export class MCPInterceptor {
   private ledger: TransactionLedger;
   private manifestLoader: ManifestLoader;
   private verifierEngine: VerifierEngine;
+  private inFlight = new Map<string, Promise<InterceptedToolResult>>();
 
   constructor(
     ledger: TransactionLedger,
@@ -55,23 +56,60 @@ export class MCPInterceptor {
 
     logger.debug(`Computed fingerprint for ${call.toolName}: ${fingerprint.hash}`);
 
+    // In-flight Deduplication Guard: If an identical fingerprint is already executing in this process, await it
+    if (this.inFlight.has(fingerprint.hash)) {
+      logger.info(`Deduplicating in-flight call for ${call.toolName} (Hash: ${fingerprint.hash})`);
+      return await this.inFlight.get(fingerprint.hash)!;
+    }
+
+    const executionPromise = this.executeWithLedger(call, policy, fingerprint, executor);
+    this.inFlight.set(fingerprint.hash, executionPromise);
+
+    try {
+      return await executionPromise;
+    } finally {
+      this.inFlight.delete(fingerprint.hash);
+    }
+  }
+
+  private async executeWithLedger(
+    call: InterceptedToolCall,
+    policy: ReturnType<ManifestLoader['getPolicyForTool']>,
+    fingerprint: ReturnType<typeof computeFingerprint>,
+    executor: ToolExecutor
+  ): Promise<InterceptedToolResult> {
     // Step 2: Check ledger for existing transaction (Idempotency deduplication)
-    const existingTx = this.ledger.getTransactionByFingerprint(fingerprint.hash);
+    let existingTx = this.ledger.getTransactionByFingerprint(fingerprint.hash);
 
     if (existingTx && !call.meta?.forceRefresh) {
       if (existingTx.state === 'COMMITTED') {
         logger.info(`Idempotent hit for ${call.toolName} (Hash: ${fingerprint.hash}). Returning cached receipt.`);
         const receipt = this.ledger.generateReceipt(existingTx.id, true);
 
+        let parsedContent: InterceptedToolResult['content'] = [
+          {
+            type: 'text',
+            text: `[AgentX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
+          },
+        ];
+
+        if (existingTx.resultPayload) {
+          try {
+            const parsed = JSON.parse(existingTx.resultPayload);
+            if (parsed && typeof parsed === 'object') {
+              if (parsed.response && Array.isArray(parsed.response.content)) {
+                parsedContent = parsed.response.content;
+              } else if (Array.isArray(parsed.content)) {
+                parsedContent = parsed.content;
+              }
+            }
+          } catch {
+            // Keep default fallback
+          }
+        }
+
         return {
-          content: [
-            {
-              type: 'text',
-              text: existingTx.resultPayload
-                ? JSON.stringify(JSON.parse(existingTx.resultPayload))
-                : `[AgentX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
-            },
-          ],
+          content: parsedContent,
           _agentxReceipt: receipt,
           _agenttxReceipt: receipt,
         };
@@ -264,8 +302,8 @@ export class MCPInterceptor {
       }
     }
 
-    // Retries exhausted
-    this.ledger.updateTransactionState(tx.id, 'FAILED', {
+    // Retries exhausted without resolution
+    this.ledger.updateTransactionState(tx.id, 'UNKNOWN_STATE', {
       errorPayload: { error: lastError?.message || 'Retries exhausted' },
     });
     const receipt = this.ledger.generateReceipt(tx.id);
@@ -275,7 +313,7 @@ export class MCPInterceptor {
       content: [
         {
           type: 'text',
-          text: `[AgentX] Execution failed after ${maxRetries} attempt(s): ${lastError?.message || 'Unknown error'}`,
+          text: `[AgentX Fail-Closed] Retries exhausted for ${call.toolName}. State is UNKNOWN_STATE. Transaction ID: ${tx.id}`,
         },
       ],
       _agentxReceipt: receipt,

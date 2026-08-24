@@ -1,6 +1,6 @@
 /**
  * AgentX Parameter & Credential Redaction Engine
- * Prevents secrets, tokens, passwords, and PII from being logged or stored in receipts.
+ * Prevents secrets, tokens, passwords, and PII from being logged or stored in receipts or ledgers.
  */
 
 const DEFAULT_SENSITIVE_KEY_PATTERNS = [
@@ -10,9 +10,14 @@ const DEFAULT_SENSITIVE_KEY_PATTERNS = [
   /api[_-]?key/i,
   /bearer/i,
   /credit[_-]?card/i,
+  /card[_-]?number/i,
   /cvv/i,
+  /cvc/i,
   /private[_-]?key/i,
   /ssn/i,
+  /pin/i,
+  /patient[_-]?phone/i,
+  /medical[_-]?note/i,
 ];
 
 export function redactSensitiveData<T>(
@@ -21,6 +26,10 @@ export function redactSensitiveData<T>(
 ): T {
   if (data === null || data === undefined) {
     return data;
+  }
+
+  if (typeof data === 'string') {
+    return data as T;
   }
 
   if (typeof data !== 'object') {

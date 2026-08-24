@@ -13,6 +13,20 @@ export type ToolExecutor = (toolName: string, args: Record<string, unknown>) => 
   isError?: boolean;
 }>;
 
+function getNestedValue(obj: unknown, path: string): unknown {
+  if (!obj || typeof obj !== 'object') return undefined;
+  const parts = path.split('.');
+  let current: any = obj;
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = current[part];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
 export class VerifierEngine {
   private ledger: TransactionLedger;
 
@@ -35,11 +49,12 @@ export class VerifierEngine {
     }
 
     for (const [targetKey, sourcePath] of Object.entries(verifierConfig.argumentMapping)) {
-      // Check if sourcePath is from result payload (e.g. "result.appointmentId")
       if (sourcePath.startsWith('result.') && resultPayload) {
         const key = sourcePath.replace('result.', '');
         if (key in resultPayload) {
           verifierArgs[targetKey] = resultPayload[key];
+        } else if (resultPayload.response && typeof resultPayload.response === 'object' && key in (resultPayload.response as Record<string, unknown>)) {
+          verifierArgs[targetKey] = (resultPayload.response as Record<string, unknown>)[key];
         }
       } else if (sourcePath in originalArgs) {
         verifierArgs[targetKey] = originalArgs[sourcePath];
@@ -69,7 +84,7 @@ export class VerifierEngine {
     this.ledger.updateTransactionState(transactionId, 'VERIFYING');
     logger.info(`Starting postcondition verification for ${tx.id} using verifier ${verifierConfig.toolName}`);
 
-    const originalArgs = JSON.parse(tx.rawArguments) as Record<string, unknown>;
+    const originalArgs = JSON.parse(tx.sanitizedArguments) as Record<string, unknown>;
     const resultPayload = tx.resultPayload ? (JSON.parse(tx.resultPayload) as Record<string, unknown>) : undefined;
 
     const verifierArgs = this.buildVerifierArguments(verifierConfig, originalArgs, resultPayload);
@@ -92,41 +107,54 @@ export class VerifierEngine {
           .map(c => c.text)
           .join('\n');
 
-        let parsedData: unknown = textContent;
+        let parsedData: unknown = null;
+        let isJson = false;
         try {
           parsedData = JSON.parse(textContent);
+          isJson = true;
         } catch {
-          // Keep as string if not JSON
+          parsedData = textContent;
         }
 
         evidence = { verifierArgs, response: parsedData };
 
-        if (verifierConfig.matchKeyPath && parsedData && typeof parsedData === 'object') {
-          const actualValue = (parsedData as Record<string, unknown>)[verifierConfig.matchKeyPath];
-          if (verifierConfig.expectedValue !== undefined) {
-            if (actualValue === verifierConfig.expectedValue) {
+        if (verifierConfig.matchKeyPath) {
+          if (!isJson || typeof parsedData !== 'object' || parsedData === null) {
+            outcome = 'INCONCLUSIVE';
+            notes = `Declared matchKeyPath ${verifierConfig.matchKeyPath} requires structured JSON response`;
+          } else {
+            const actualValue = getNestedValue(parsedData, verifierConfig.matchKeyPath);
+            if (verifierConfig.expectedValue !== undefined) {
+              if (actualValue === verifierConfig.expectedValue) {
+                outcome = 'PROVEN_COMMITTED';
+                notes = `Matched expected value for ${verifierConfig.matchKeyPath}`;
+              } else if (actualValue !== undefined) {
+                outcome = 'PROVEN_ABSENT';
+                notes = `Value mismatch on ${verifierConfig.matchKeyPath}: expected ${verifierConfig.expectedValue}, found ${actualValue}`;
+              } else {
+                outcome = 'PROVEN_ABSENT';
+                notes = `Key path ${verifierConfig.matchKeyPath} absent in response`;
+              }
+            } else if (actualValue !== undefined && actualValue !== null) {
               outcome = 'PROVEN_COMMITTED';
-              notes = `Matched expected value for ${verifierConfig.matchKeyPath}`;
+              notes = `Key ${verifierConfig.matchKeyPath} found in external state`;
             } else {
               outcome = 'PROVEN_ABSENT';
-              notes = `Value mismatch on ${verifierConfig.matchKeyPath}: expected ${verifierConfig.expectedValue}, found ${actualValue}`;
+              notes = `Key ${verifierConfig.matchKeyPath} absent in external state`;
             }
-          } else if (actualValue !== undefined && actualValue !== null) {
-            outcome = 'PROVEN_COMMITTED';
-            notes = `Key ${verifierConfig.matchKeyPath} found in external state`;
-          } else {
-            outcome = 'PROVEN_ABSENT';
-            notes = `Key ${verifierConfig.matchKeyPath} absent in external state`;
           }
         } else if (textContent.toLowerCase().includes('not found') || textContent.toLowerCase().includes('does not exist')) {
           outcome = 'PROVEN_ABSENT';
           notes = 'Verifier output indicates entity does not exist';
-        } else if (textContent.trim().length > 0) {
+        } else if (isJson && parsedData && typeof parsedData === 'object') {
           outcome = 'PROVEN_COMMITTED';
-          notes = 'Verifier returned positive entity representation';
+          notes = 'Verifier returned valid structured entity representation';
+        } else if (textContent.toLowerCase().includes('error') || textContent.toLowerCase().includes('fail') || textContent.trim().length === 0) {
+          outcome = 'INCONCLUSIVE';
+          notes = 'Verifier output was inconclusive or contained error text';
         } else {
           outcome = 'INCONCLUSIVE';
-          notes = 'Verifier output was empty';
+          notes = 'Verifier output was unstructured and inconclusive';
         }
       }
     } catch (err: unknown) {
@@ -148,18 +176,17 @@ export class VerifierEngine {
     if (outcome === 'PROVEN_COMMITTED') {
       finalState = 'COMMITTED';
       this.ledger.updateTransactionState(tx.id, 'COMMITTED', {
-        resultPayload: evidence,
+        resultPayload: { verified: true, evidence },
       });
-      this.ledger.generateReceipt(tx.id);
     } else if (outcome === 'PROVEN_ABSENT') {
       finalState = 'FAILED';
       this.ledger.updateTransactionState(tx.id, 'FAILED', {
-        errorPayload: { reason: 'State verified as absent / unexecuted', evidence },
+        errorPayload: { verifiedAbsent: true, notes },
       });
     } else {
       finalState = 'UNKNOWN_STATE';
       this.ledger.updateTransactionState(tx.id, 'UNKNOWN_STATE', {
-        errorPayload: { reason: 'Postcondition verification inconclusive (fail-closed)', evidence },
+        errorPayload: { inconclusive: true, notes },
       });
     }
 
