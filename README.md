@@ -42,19 +42,22 @@ Every capability in AgentX is backed by reproducible automated suites and live i
 * **< 1.5 ms** local SQLite transaction overhead.
 * **Fail-closed guarantees** preventing duplicate mutations on unverified critical actions.
 
-### 1.4. Shortest Action (Quick Start)
+### 1.4. Quick Start (Currently Verified via Source)
 ```bash
-# 1. Clone and install
+# 1. Clone the repository
 git clone https://github.com/studivox/agentx.git
 cd agentx
-npm install
 
-# 2. Build and verify test suite
+# 2. Install dependencies & build
+npm ci
 npm run build
-npm test
 
-# 3. Run the interactive end-to-end demo
+# 3. Verify tests and demo
+npm test
 npm run demo
+
+# 4. Run the AgentX system doctor
+node dist/cli.js doctor --manifest examples/agentx.config.json
 ```
 
 ---
@@ -139,11 +142,18 @@ stateDiagram-v2
 
 ## 5. Five-Minute Integration Guide
 
-### 5.1. Wrap an MCP Server via CLI
-Wrap any existing MCP server command in a single line without changing any downstream code:
+### 5.1. Wrap an MCP Server via Local CLI
+Wrap any existing MCP server command without modifying downstream code:
 
 ```bash
-npx agentx wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
+# Using the compiled local CLI binary
+node dist/cli.js wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
+
+# Or using npm dev script
+npm run dev -- wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
+
+# Or after running 'npm link' inside this repository
+agentx wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
 ```
 
 ### 5.2. Configure in Claude Desktop or Cursor
@@ -153,10 +163,9 @@ In your `claude_desktop_config.json` or `mcp_config.json`:
 {
   "mcpServers": {
     "booking-service": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y",
-        "agentx",
+        "/path/to/agentx/dist/cli.js",
         "wrap",
         "--server",
         "node",
@@ -322,22 +331,22 @@ AgentX provides a complete CLI for operators and developers:
 
 ```bash
 # 1. Start the transparent transactional proxy
-agentx wrap --server "node" "dist/server.js" --manifest "agentx.config.json"
+node dist/cli.js wrap --server "node" "dist/server.js" --manifest "agentx.config.json"
 
 # 2. List recent ledger transactions
-agentx list --state COMMITTED --limit 10
+node dist/cli.js list --state COMMITTED --limit 10
 
 # Output as structured JSON
-agentx list --json
+node dist/cli.js list --json
 
 # 3. Inspect detailed attempt history and state transitions
-agentx status tx_2432f6de1f904180afaecc2c4a2a9d8b
+node dist/cli.js status tx_2432f6de1f904180afaecc2c4a2a9d8b
 
 # 4. Export verifiable receipt JSON
-agentx receipt tx_2432f6de1f904180afaecc2c4a2a9d8b
+node dist/cli.js receipt tx_2432f6de1f904180afaecc2c4a2a9d8b
 
 # 5. Run database health and configuration integrity doctor
-agentx doctor --manifest agentx.config.json
+node dist/cli.js doctor --manifest agentx.config.json
 ```
 
 ### Environment Variables
@@ -350,7 +359,22 @@ agentx doctor --manifest agentx.config.json
 
 ---
 
-## 9. Comparison: Architectural Landscape
+## 9. Future npm Distribution (After npm Release)
+
+> [!NOTE]
+> The `@studivox/agentx` package is currently in pre-release and has **not yet been published to npm**. The commands below will be active upon public package registry release.
+
+```bash
+# Future global npx invocation (after npm publish)
+npx @studivox/agentx wrap --server "node" "server.js" --manifest "agentx.config.json"
+
+# Future installation in project dependencies
+npm install @studivox/agentx
+```
+
+---
+
+## 10. Comparison: Architectural Landscape
 
 | Feature / Dimension | Raw MCP | Simple Retry Loop | Traditional HTTP Idempotency (Stripe/AWS) | Temporal / Cadence | Academic Cordon (2025/2026) | **AgentX** |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -364,7 +388,7 @@ agentx doctor --manifest agentx.config.json
 
 ---
 
-## 10. Honest Limitations & Boundaries
+## 11. Honest Limitations & Boundaries
 
 AgentX is engineered for practical and rigorous operational reliability, but it is not magic:
 1. **Not Universal Distributed 2PC:** Third-party web APIs that lack query/verifier endpoints or idempotency keys cannot be made 100% atomic if they fail ambiguously. AgentX protects against duplicate execution by failing closed (`UNKNOWN_STATE`).
@@ -373,7 +397,7 @@ AgentX is engineered for practical and rigorous operational reliability, but it 
 
 ---
 
-## 11. Roadmap
+## 12. Roadmap
 
 - [x] **v1.0.0:** Deterministic fingerprinting, SQLite WAL ledger, active verifier engine, saga coordinator, stdio proxy, CLI, secret redactor.
 - [ ] **v1.1.0:** Remote Streamable HTTP / SSE transport proxy support.
@@ -382,7 +406,7 @@ AgentX is engineered for practical and rigorous operational reliability, but it 
 
 ---
 
-## 12. Community & Contributing
+## 13. Community & Contributing
 
 We welcome contributions to expand the transactional reliability frontier for AI agents!
 
@@ -393,6 +417,6 @@ We welcome contributions to expand the transactional reliability frontier for AI
 
 ---
 
-## 13. License
+## 14. License
 
 [MIT License](LICENSE). Copyright (c) 2026 AgentX Core Maintainers.
