@@ -55,7 +55,7 @@ AgentX is a local-first, zero-cloud-dependency transactional reliability layer a
   - `attempts`: Individual execution attempts, timings, status codes, and error traces.
   - `verifications`: Evidence gathered by active postcondition inspections.
   - `compensations`: History and results of saga rollback actions.
-- **Performance:** Transaction insert/update overhead is `< 1.5ms` on local NVMe/SSD storage.
+- **Performance:** Local SQLite WAL-mode eliminates external network roundtrips for state management.
 
 ### 2.3. Transaction State Machine
 

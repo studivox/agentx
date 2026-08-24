@@ -163,7 +163,7 @@ program
 // 4. RECEIPT COMMAND
 program
   .command('receipt <txId>')
-  .description('Print the verifiable JSON receipt for a transaction')
+  .description('Print the evidence-backed JSON receipt for a transaction')
   .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
   .action((txId, opts) => {
     const ledger = new TransactionLedger(opts.db);

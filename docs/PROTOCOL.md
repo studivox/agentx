@@ -52,7 +52,7 @@ AgentX operates transparently over standard **Model Context Protocol (MCP) JSON-
 
 ## 3. Evidence-Backed JSON Receipt Format
 
-Every transactional mutation yields a cryptographically verifiable JSON receipt stored in the ledger:
+Every transactional mutation yields an evidence-backed JSON receipt stored in the ledger with deterministic SHA-256 fingerprinting:
 
 ```json
 {
