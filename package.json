@@ -1,6 +1,6 @@
 {
   "name": "@studivox/agentx",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Transactional reliability layer and proxy for Model Context Protocol (MCP) tool execution",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,9 +16,13 @@
   "bugs": {
     "url": "https://github.com/studivox/agentx/issues"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "files": [
     "dist",
     "docs",
+    "examples",
     "README.md",
     "LICENSE"
   ],

@@ -7,6 +7,7 @@
   <br/><br/>
 
   <p align="center">
+    <a href="https://www.npmjs.com/package/@studivox/agentx"><img src="https://img.shields.io/npm/v/@studivox/agentx.svg" alt="npm version" /></a>
     <a href="https://github.com/studivox/agentx/actions/workflows/ci.yml"><img src="https://github.com/studivox/agentx/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green.svg" alt="Node.js >= 20.0.0" /></a>
@@ -134,7 +135,24 @@ When an AI agent executes real-world actions through the **Model Context Protoco
 
 ## Quick Start
 
-### 60-Second Setup from Source
+### Global Installation via npm
+```bash
+# 1. Install AgentX CLI globally
+npm install -g @studivox/agentx
+
+# 2. Verify installation
+agentx --help
+
+# 3. Or run directly without installation via npx
+npx @studivox/agentx --help
+```
+
+### Install in a Project
+```bash
+npm install @studivox/agentx
+```
+
+### Clone & Run from Source (Development)
 ```bash
 # 1. Clone the repository
 git clone https://github.com/studivox/agentx.git
@@ -293,17 +311,14 @@ Declare operational reliability policies in `agentx.config.json`:
 
 ## Integration Guide
 
-### Wrap an MCP Server via Local CLI
-Wrap any existing MCP server command without modifying downstream code:
+### Wrap an MCP Server via CLI
+Wrap any existing MCP server command with zero changes to downstream code:
 
 ```bash
-# Using the compiled local CLI binary
-node dist/cli.js wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
+# Using global npx
+npx @studivox/agentx wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
 
-# Or using npm dev script
-npm run dev -- wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
-
-# Or after running 'npm link' inside this repository
+# Or using locally installed agentx binary
 agentx wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
 ```
 
@@ -314,9 +329,10 @@ In your `claude_desktop_config.json` or `mcp_config.json`:
 {
   "mcpServers": {
     "booking-service": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/path/to/agentx/dist/cli.js",
+        "-y",
+        "@studivox/agentx",
         "wrap",
         "--server",
         "node",
@@ -337,22 +353,22 @@ AgentX provides a complete CLI for operators and developers:
 
 ```bash
 # 1. Start the transparent transactional proxy
-node dist/cli.js wrap --server "node" "dist/server.js" --manifest "agentx.config.json"
+agentx wrap --server "node" "dist/server.js" --manifest "agentx.config.json"
 
 # 2. List recent ledger transactions
-node dist/cli.js list --state COMMITTED --limit 10
+agentx list --state COMMITTED --limit 10
 
 # Output as structured JSON
-node dist/cli.js list --json
+agentx list --json
 
 # 3. Inspect detailed attempt history and state transitions
-node dist/cli.js status tx_2432f6de1f904180afaecc2c4a2a9d8b
+agentx status tx_2432f6de1f904180afaecc2c4a2a9d8b
 
 # 4. Export evidence-backed receipt JSON
-node dist/cli.js receipt tx_2432f6de1f904180afaecc2c4a2a9d8b
+agentx receipt tx_2432f6de1f904180afaecc2c4a2a9d8b
 
 # 5. Run database health and configuration integrity doctor
-node dist/cli.js doctor --manifest agentx.config.json
+agentx doctor --manifest agentx.config.json
 ```
 
 ### Environment Variables
@@ -423,27 +439,12 @@ AgentX is engineered for practical, rigorous operational reliability:
 
 ---
 
-## Future npm Distribution (After npm Release)
-
-> [!NOTE]
-> The `@studivox/agentx` package is currently in pre-release and has **not yet been published to npm**. The commands below will be active upon public package registry release.
-
-```bash
-# Future global npx invocation (after npm publish)
-npx @studivox/agentx wrap --server "node" "server.js" --manifest "agentx.config.json"
-
-# Future installation in project dependencies
-npm install @studivox/agentx
-```
-
----
-
 ## Roadmap
 
-- [x] **v1.0.0:** Deterministic fingerprinting, SQLite WAL ledger, active verifier engine, saga coordinator, stdio proxy, CLI, secret redactor.
-- [ ] **v1.1.0:** Remote Streamable HTTP / SSE transport proxy support.
-- [ ] **v1.2.0:** Auto-synthesizing verifier schemas directly from OpenAPI / MCP schema metadata.
-- [ ] **v1.3.0:** Local web-based interactive visual ledger explorer.
+- [x] **v0.1.0:** Initial public preview release on npm (`@studivox/agentx`). Deterministic fingerprinting, SQLite WAL ledger, active verifier engine, saga coordinator, stdio proxy, CLI, secret redactor.
+- [ ] **v0.2.0:** Remote Streamable HTTP / SSE transport proxy support.
+- [ ] **v0.3.0:** Auto-synthesizing verifier schemas directly from OpenAPI / MCP schema metadata.
+- [ ] **v0.4.0:** Local web-based interactive visual ledger explorer.
 
 ---
 

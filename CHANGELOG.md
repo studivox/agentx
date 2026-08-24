@@ -5,9 +5,10 @@ All notable changes to **AgentX** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-08-24
+## [0.1.0] - 2026-08-25
 
-### Added
+### Initial Public Preview Release
+
 - **Deterministic Logical Fingerprinting:** Canonical JSON ordering and declared logical key filtering for deduplicating MCP tool calls (`SHA-256`).
 - **Durable SQLite Ledger:** WAL-mode SQLite repository tracking intents (`PENDING`), executions (`EXECUTING`), commitments (`COMMITTED`), ambiguous outcomes (`AMBIGUOUS`), verifications (`VERIFYING`), and compensations (`COMPENSATING`/`COMPENSATED`).
 - **Active Postcondition Verification:** Automatic interrogation of external state upon timeouts or network drops before initiating retries.
