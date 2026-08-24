@@ -1,5 +1,5 @@
 /**
- * AgentTX Interactive End-to-End Demonstration Client
+ * AgentX Interactive End-to-End Demonstration Client
  * Demonstrates:
  * 1. Initial mutating execution & receipt generation
  * 2. Deterministic fingerprinting & zero-duplicate replay
@@ -15,17 +15,17 @@ import { VerifierEngine } from '../src/verification/verifier-engine.js';
 import { resolve } from 'node:path';
 import { unlinkSync, existsSync } from 'node:fs';
 
-const DB_PATH = '.agenttx/demo_client_agenttx.db';
+const DB_PATH = '.agentx/demo_client_agentx.db';
 if (existsSync(DB_PATH)) {
   try { unlinkSync(DB_PATH); } catch { /* ignore */ }
 }
 
 async function runDemo() {
   console.log('\n============================================================');
-  console.log('         AgentTX Flagship Demonstration & Verification      ');
+  console.log('         AgentX Flagship Demonstration & Verification       ');
   console.log('============================================================\n');
 
-  const configPath = resolve(process.cwd(), 'examples/agenttx.config.json');
+  const configPath = resolve(process.cwd(), 'examples/agentx.config.json');
   const manifestLoader = ManifestLoader.loadFromFile(configPath);
   const ledger = new TransactionLedger(DB_PATH);
   const verifierEngine = new VerifierEngine(ledger);
@@ -96,11 +96,11 @@ async function runDemo() {
 
   const res1 = await interceptor.handleToolCall(initialCall, mockServerExecutor);
   console.log('  [+] Call 1 Completed.');
-  console.log(`  [+] Receipt ID: ${res1._agenttxReceipt?.receiptId}`);
-  console.log(`  [+] Transaction State: ${res1._agenttxReceipt?.state}`);
-  console.log(`  [+] Idempotent Replay: ${res1._agenttxReceipt?.idempotentReplay}`);
+  console.log(`  [+] Receipt ID: ${res1._agentxReceipt?.receiptId}`);
+  console.log(`  [+] Transaction State: ${res1._agentxReceipt?.state}`);
+  console.log(`  [+] Idempotent Replay: ${res1._agentxReceipt?.idempotentReplay}`);
   console.log('  [+] Sanitized Arguments stored in Ledger (PII Redacted):');
-  console.log('     ', JSON.stringify(res1._agenttxReceipt?.sanitizedArguments));
+  console.log('     ', JSON.stringify(res1._agentxReceipt?.sanitizedArguments));
   console.log(`  [+] Downstream Server RPC Invocations: ${serverCallCount}\n`);
 
   // -------------------------------------------------------------
@@ -121,8 +121,8 @@ async function runDemo() {
 
   const serverCallCountBefore = serverCallCount;
   const res2 = await interceptor.handleToolCall(duplicateCall, mockServerExecutor);
-  console.log('  [✓] AgentTX Intercepted Duplicate Call!');
-  console.log(`  [✓] Idempotent Replay Flag: ${res2._agenttxReceipt?.idempotentReplay}`);
+  console.log('  [✓] AgentX Intercepted Duplicate Call!');
+  console.log(`  [✓] Idempotent Replay Flag: ${res2._agentxReceipt?.idempotentReplay}`);
   console.log(`  [✓] Server Call Count Delta: ${serverCallCount - serverCallCountBefore} (ZERO additional calls sent to downstream server!)`);
   console.log(`  [✓] Duplicate side-effect completely prevented.\n`);
 
@@ -178,17 +178,17 @@ async function runDemo() {
     flakyExecutor
   );
 
-  console.log('  [✓] AgentTX Automatically Executed Postcondition Verifier: get_appointment');
-  console.log(`  [✓] Reconciled Final State: ${res3._agenttxReceipt?.state}`);
+  console.log('  [✓] AgentX Automatically Executed Postcondition Verifier: get_appointment');
+  console.log(`  [✓] Reconciled Final State: ${res3._agentxReceipt?.state}`);
   console.log('  [✓] Verification Evidence:');
-  console.log('     ', JSON.stringify(res3._agenttxReceipt?.verificationEvidence));
+  console.log('     ', JSON.stringify(res3._agentxReceipt?.verificationEvidence));
   console.log('  [✓] Ambiguity successfully resolved without duplicate execution!\n');
 
   // -------------------------------------------------------------
   // Scenario 4: Saga Compensation (Rollback)
   // -------------------------------------------------------------
   console.log('[Scenario 4] Executing Saga Compensation for first appointment...');
-  const txId = res1._agenttxReceipt?.transactionId!;
+  const txId = res1._agentxReceipt?.transactionId!;
   const compConfig = manifestLoader.getPolicyForTool('book_appointment').compensator!;
 
   const compRes = await sagaCoordinator.compensateTransaction(txId, compConfig, mockServerExecutor);

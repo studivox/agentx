@@ -1,5 +1,5 @@
 /**
- * AgentTX Diagnostic Logger
+ * AgentX Diagnostic Logger
  * CRITICAL INVARIANT: Logs MUST ONLY be written to stderr.
  * Standard output (stdout) is strictly reserved for MCP JSON-RPC protocol transport.
  */
@@ -19,8 +19,9 @@ export function setLogLevel(level: LogLevel): void {
 }
 
 export function setLogLevelFromName(name?: string): void {
-  if (!name) return;
-  const upper = name.toUpperCase();
+  const target = name || process.env.AGENTX_LOG_LEVEL;
+  if (!target) return;
+  const upper = target.toUpperCase();
   if (upper === 'DEBUG') currentLogLevel = LogLevel.DEBUG;
   else if (upper === 'INFO') currentLogLevel = LogLevel.INFO;
   else if (upper === 'WARN') currentLogLevel = LogLevel.WARN;
@@ -38,7 +39,7 @@ function formatMessage(level: string, message: string, ...args: unknown[]): stri
       formattedArgs = ' [Unserializable Args]';
     }
   }
-  return `[${timestamp}] [AgentTX] [${level}] ${message}${formattedArgs}\n`;
+  return `[${timestamp}] [AgentX] [${level}] ${message}${formattedArgs}\n`;
 }
 
 export const logger = {

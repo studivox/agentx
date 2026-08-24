@@ -1,9 +1,8 @@
 /**
- * AgentTX Policy Manifest Types & Zod Schemas
+ * AgentX Policy Manifest Types & Zod Schemas
  */
 
 import { z } from 'zod';
-import { ToolRiskLevel } from './transaction.js';
 
 export const VerifierConfigSchema = z.object({
   toolName: z.string().min(1),
@@ -35,10 +34,10 @@ export const ToolPolicySchema = z.object({
 
 export type ToolPolicy = z.infer<typeof ToolPolicySchema>;
 
-export const AgentTXManifestSchema = z.object({
+export const AgentXManifestSchema = z.object({
   version: z.string().default('1.0.0'),
   serverName: z.string().optional(),
-  ledgerPath: z.string().default('.agenttx/agenttx.db'),
+  ledgerPath: z.string().default('.agentx/agentx.db'),
   defaultPolicy: z.object({
     timeoutMs: z.number().int().positive().default(15000),
     maxRetries: z.number().int().nonnegative().default(2),
@@ -51,4 +50,8 @@ export const AgentTXManifestSchema = z.object({
   tools: z.record(z.string(), ToolPolicySchema).default({}),
 });
 
-export type AgentTXManifest = z.infer<typeof AgentTXManifestSchema>;
+export type AgentXManifest = z.infer<typeof AgentXManifestSchema>;
+
+// Backwards-compatibility aliases
+export const AgentTXManifestSchema = AgentXManifestSchema;
+export type AgentTXManifest = AgentXManifest;

@@ -1,5 +1,5 @@
 /**
- * AgentTX Protocol & Interceptor Types
+ * AgentX Protocol & Interceptor Types
  */
 
 import { Receipt, TransactionRecord } from './transaction.js';
@@ -24,6 +24,7 @@ export interface InterceptedToolResult {
     mimeType?: string;
   }>;
   isError?: boolean;
+  _agentxReceipt?: Receipt;
   _agenttxReceipt?: Receipt;
 }
 

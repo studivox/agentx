@@ -3,14 +3,14 @@ import { TransactionLedger } from '../src/ledger/transaction-ledger.js';
 import { ManifestLoader } from '../src/manifest/manifest-loader.js';
 import { MCPInterceptor } from '../src/proxy/mcp-interceptor.js';
 import { VerifierEngine } from '../src/verification/verifier-engine.js';
-import { AgentTXManifest } from '../src/types/manifest.js';
+import { AgentXManifest } from '../src/types/manifest.js';
 
 describe('Transactional MCP Interceptor & Proxy Engine', () => {
   let ledger: TransactionLedger;
   let manifestLoader: ManifestLoader;
   let interceptor: MCPInterceptor;
 
-  const testManifest: AgentTXManifest = {
+  const testManifest: AgentXManifest = {
     version: '1.0.0',
     ledgerPath: ':memory:',
     defaultPolicy: {
@@ -72,7 +72,7 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
 
     expect(called).toBe(true);
     expect(res.content[0].text).toContain('user: get_user');
-    expect(res._agenttxReceipt).toBeUndefined();
+    expect(res._agentxReceipt).toBeUndefined();
 
     // Verify ledger has 0 records
     const all = ledger.listTransactions();
@@ -97,12 +97,12 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
     );
 
     expect(callCount).toBe(1);
-    expect(res._agenttxReceipt).toBeDefined();
-    expect(res._agenttxReceipt?.state).toBe('COMMITTED');
-    expect(res._agenttxReceipt?.idempotentReplay).toBe(false);
+    expect(res._agentxReceipt).toBeDefined();
+    expect(res._agentxReceipt?.state).toBe('COMMITTED');
+    expect(res._agentxReceipt?.idempotentReplay).toBe(false);
 
     // Check PII redaction in receipt
-    expect(res._agenttxReceipt?.sanitizedArguments.cardNumber).toBe('[REDACTED]');
+    expect(res._agentxReceipt?.sanitizedArguments.cardNumber).toBe('[REDACTED]');
   });
 
   it('should intercept duplicate call and return cached receipt with zero duplicate downstream execution', async () => {
@@ -121,7 +121,7 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
     );
 
     expect(callCount).toBe(1);
-    expect(res1._agenttxReceipt?.idempotentReplay).toBe(false);
+    expect(res1._agentxReceipt?.idempotentReplay).toBe(false);
 
     // Duplicate call with same logical keys
     const res2 = await interceptor.handleToolCall(
@@ -131,8 +131,8 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
 
     // ZERO additional calls to executor
     expect(callCount).toBe(1);
-    expect(res2._agenttxReceipt?.idempotentReplay).toBe(true);
-    expect(res2._agenttxReceipt?.transactionId).toBe(res1._agenttxReceipt?.transactionId);
+    expect(res2._agentxReceipt?.idempotentReplay).toBe(true);
+    expect(res2._agentxReceipt?.transactionId).toBe(res1._agentxReceipt?.transactionId);
   });
 
   it('should recover from network timeout via active postcondition verification', async () => {
@@ -157,8 +157,9 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
     );
 
     expect(res.isError).toBeFalsy();
-    expect(res._agenttxReceipt?.state).toBe('COMMITTED');
-    expect(res._agenttxReceipt?.verificationEvidence).toBeDefined();
+    expect(callCount).toBe(2);
+    expect(res._agentxReceipt?.state).toBe('COMMITTED');
+    expect(res._agentxReceipt?.verificationEvidence).toBeDefined();
   });
 
   it('should fail-closed with UNKNOWN_STATE on timeout of unverified critical mutating tool', async () => {
@@ -172,7 +173,7 @@ describe('Transactional MCP Interceptor & Proxy Engine', () => {
     );
 
     expect(res.isError).toBe(true);
-    expect(res._agenttxReceipt?.state).toBe('UNKNOWN_STATE');
+    expect(res._agentxReceipt?.state).toBe('UNKNOWN_STATE');
     expect(res.content[0].text).toContain('Fail-Closed');
   });
 });

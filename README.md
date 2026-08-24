@@ -1,147 +1,180 @@
-# AgentTX
+# AgentX
 
-**Local-first transactional reliability layer and proxy for Model Context Protocol (MCP) tool execution.**
+**Transactional reliability for MCP tool calls: preview, execute once, verify, and compensate AI agent actions.**
 
+[![CI](https://github.com/studivox/agentx/actions/workflows/ci.yml/badge.svg)](https://github.com/studivox/agentx/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
-[![Tests](https://img.shields.io/badge/Tests-35%20Passed-brightgreen.svg)]()
-[![TypeScript](https://img.shields.io/badge/TypeScript-ES2022-blue.svg)]()
-[![Zero Cloud](https://img.shields.io/badge/Architecture-Local--First%20(Zero%20Cloud)-orange.svg)]()
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-ES2022%20%2F%20NodeNext-3178C6.svg)](https://www.typescriptlang.org/)
+[![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io)
 
 ---
 
-## 1. The Problem: AI Agents and Unsafe Side-Effects
+## 1. The Core Invariant
 
-As AI agents transition from read-only assistants to autonomous actors performing real-world side effects (booking calendar events, charging payments, sending emails, executing Git pull requests, managing database records), **execution reliability and transactional safety** become critical.
+### 1.1. The Problem
+When an AI agent executes real-world actions through the **Model Context Protocol (MCP)**—such as booking appointments, creating GitHub pull requests, dispatching payments, or sending customer emails—standard RPC transport failures create ambiguity:
 
-Current agent architectures rely on Remote Procedure Calls (RPC) over protocols like **Model Context Protocol (MCP)**. When network timeouts, dropped connections, process restarts, or server 504 errors occur while a tool mutation is in flight, agents initiate **blind retries**, causing catastrophic duplicate side effects:
-
-- Double charges on credit cards
-- Duplicate appointment and reservation bookings
-- Redundant pull requests and deployments
-- Inconsistent distributed state
+> **An MCP action may succeed in the downstream system while its network response is dropped, timed out, or interrupted by a client crash. A blind retry will execute the mutating action a second time.**
 
 ```
-[Agent LLM] ──( tools/call )──► [ Network Drop / 504 Timeout ] ──( Blind Retry )──► [ Duplicate Side-Effect! ]
+[ Agent LLM ] ──( tools/call )──► [ Network Timeout / Drop ] ──( Blind Retry )──► [ Duplicate Side Effect! ]
+                                         │
+                                         ▼
+                             (Action succeeded remotely,
+                              but response was lost)
 ```
 
----
+### 1.2. The Solution
+**AgentX** is a local-first, zero-cloud-dependency transactional reliability layer and proxy that sits transparently between any MCP host (Claude Desktop, Cursor, Antigravity CLI, custom LLM orchestrators) and downstream MCP tool servers.
 
-## 2. The Solution: AgentTX
+AgentX delivers:
+* **Deterministic Logical Identity:** Canonical JSON argument sorting and declared logical key extraction (`SHA-256`) to deduplicate retries regardless of argument formatting.
+* **Durable SQLite WAL Ledger:** Atomic local state tracking (`PENDING` → `EXECUTING` → `COMMITTED` / `AMBIGUOUS` / `UNKNOWN_STATE`).
+* **Active Postcondition Verification:** Automatic interrogation of external system state via verifier tools before making retry decisions.
+* **Replay Protection:** Immediate cached receipt returns for duplicate requests with zero downstream invocations.
+* **Saga Compensation Coordinator:** Declarative rollback mechanisms for individual and multi-step composite operations in reverse (LIFO) order.
+* **Cryptographic & Redacted Receipts:** Auditable JSON receipts with automatic recursive masking of secrets, API keys, and sensitive fields.
 
-**AgentTX** is a lightweight, zero-dependency, local-first proxy that transparently sits between any MCP client (Claude Desktop, Cursor, Antigravity CLI, custom LLM orchestrators) and downstream MCP servers.
+### 1.3. Verified Proof
+Every capability in AgentX is backed by reproducible automated suites and live integration benchmarks:
+* **8 test suites with 35 passing tests** covering canonicalization, ledger WAL transactions, verifier reconciliations, saga rollbacks, sensitive data scrubbing, proxy interception, and CLI operations.
+* **< 1.5 ms** local SQLite transaction overhead.
+* **Fail-closed guarantees** preventing duplicate mutations on unverified critical actions.
 
-```text
-+-------------------+        JSON-RPC 2.0         +-----------------------+        JSON-RPC 2.0         +-------------------+
-|                   | ──────────────────────────► |                       | ──────────────────────────► |                   |
-|  Agent / MCP Host |                             |   AgentTX Proxy       |                             |   Target MCP      |
-|  (Claude/Cursor)  | ◄────────────────────────── |   (Reliability Layer) | ◄────────────────────────── |   Tool Server     |
-+-------------------+       Evidence Receipt      +-----------+-----------+                             +-------------------+
-                                                              │
-                                            +─────────────────┼─────────────────+
-                                            ▼                 ▼                 ▼
-                                    +---------------+ +---------------+ +---------------+
-                                    | SQLite Ledger | |  Postcondition| |     Saga      |
-                                    |   (WAL Mode)  | |Verifier Engine| |  Coordinator  |
-                                    +---------------+ +---------------+ +---------------+
-```
-
----
-
-## 3. Prior Art & Architectural Comparison
-
-AgentTX does **not** make dishonest "universal ACID" claims across third-party arbitrary APIs that lack atomic primitives. Instead, it provides **practical, defensible, and rigorous operational reliability**:
-
-| Feature / Dimension | Raw MCP | Traditional Idempotency (Stripe/AWS) | Temporal / Cadence | Academic Cordon | **AgentTX** |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Zero Code Changes to Tools** | Yes | No (requires header rewrite) | No (heavy SDK rewrite) | No (custom sandbox) | **Yes (Transparent Proxy)** |
-| **Local-First & Zero-Cloud** | Yes | No (Redis/DynamoDB) | No (Cluster backend) | Yes | **Yes (Local SQLite WAL)** |
-| **Deterministic Logical Hashing**| No | Header-dependent | Workflow replay | State sandbox | **Yes (Canonical SHA-256)** |
-| **Active Postcondition Verifier** | No | No | No | No | **Yes (State Reconciliation)** |
-| **Saga-Style Reverse Rollback** | No | No | Custom code | Shadow state | **Yes (Declarative LIFO)** |
-| **Automatic Secret Redaction** | No | Manual | Manual | No | **Yes (Recursive scrubbing)** |
-| **Fail-Closed Safety Guard** | No | No | Retry loop | Staging abort | **Yes (`UNKNOWN_STATE` lock)** |
-
----
-
-## 4. Key Features
-
-### 1. Deterministic Logical Fingerprinting
-Calculates canonical SHA-256 hashes based on manifest-declared logical keys (e.g. `patientId`, `doctorId`, `date`, `slot`), completely immune to cosmetic key reordering or ephemeral client nonces.
-
-### 2. Zero-Duplicate Idempotent Replay
-If an agent retries an identical committed action, AgentTX intercepts the call, returns the cached receipt with `idempotentReplay: true`, and dispatches **ZERO additional calls** to the downstream server.
-
-### 3. Active Postcondition Verification Engine
-When transport errors or timeouts occur, AgentTX inspects external state via declared verifier tools (e.g., `get_appointment`) to determine whether the mutation committed remotely before deciding whether to retry.
-
-### 4. Fail-Closed Safety (`UNKNOWN_STATE`)
-If post-execution state cannot be proven, the transaction terminates in `UNKNOWN_STATE` and blocks blind retries, preventing duplicate side-effects and alerting the operator.
-
-### 5. Saga-Style Compensation Coordinator
-Supports declarative compensating actions (`cancel_appointment`, `refund_payment`) to cleanly roll back individual mutations or multi-step saga execution chains in LIFO reverse order.
-
-### 6. Evidence-Backed JSON Receipts
-Every mutation produces an auditable, structured JSON receipt containing timestamps, state transitions, attempt history, and cryptographic fingerprints with recursive secret redaction.
-
----
-
-## 5. Quick Start
-
-### Installation
-
+### 1.4. Shortest Action (Quick Start)
 ```bash
-# Clone the repository
-git clone https://github.com/agenttx/agenttx.git
-cd agenttx
-
-# Install dependencies and build
+# 1. Clone and install
+git clone https://github.com/studivox/agentx.git
+cd agentx
 npm install
+
+# 2. Build and verify test suite
 npm run build
+npm test
+
+# 3. Run the interactive end-to-end demo
+npm run demo
 ```
 
-### Option A: Wrap an MCP Server via CLI
+---
 
-Wrap any standard MCP server command (e.g., SQLite, PostgreSQL, GitHub, custom tools):
+## 2. "Without AgentX" vs. "With AgentX"
+
+| Failure Scenario | Without AgentX (Raw MCP / Blind Retry) | With AgentX |
+| :--- | :--- | :--- |
+| **Network Timeout during Payment / Booking** | Agent assumes failure, retries action, causing **double charge or duplicate booking**. | Intercepts timeout, executes declared **postcondition verifier**, proves remote commitment, and returns cached receipt. |
+| **Agent Re-invokes Same Tool with Reordered JSON** | Argument ordering difference causes cache miss; downstream server executes duplicate mutation. | Deterministic **canonical sorting and logical key hashing** matches existing record, returning `idempotentReplay: true` with **0 downstream calls**. |
+| **Flaky Unverified Destructive Mutation** | Blind retry risks catastrophic repeated destructive write or corrupt state. | **Fail-Closed Safety**: Locks transaction into `UNKNOWN_STATE`, blocks blind retries, and emits actionable alert. |
+| **Failure in Multi-Step Workflow (Step 3 of 4 fails)** | Previous steps 1 and 2 remain orphaned and half-committed in downstream systems. | **Saga Coordinator** triggers registered compensators in reverse (LIFO) order to cleanly roll back prior steps. |
+| **Credential / PII Logging in Audits** | Raw passwords, credit card numbers, or API keys are written to debug logs or disk. | Automatic **recursive parameter scrubbing** redacts sensitive keys matching policy rules before writing to ledger or receipt. |
+
+---
+
+## 3. Architecture & System Overview
+
+```mermaid
+flowchart TD
+    subgraph Host["MCP Client / Agent Host"]
+        Client["Claude Desktop / Cursor / Custom Agent"]
+    end
+
+    subgraph AgentX["AgentX Transactional Reliability Layer"]
+        Proxy["Stdio / Transport Interceptor"]
+        FP["Deterministic Canonical Fingerprinter\n(SHA-256)"]
+        Ledger[("Durable SQLite Ledger\n(WAL Mode)")]
+        Verifier["Active Postcondition\nVerifier Engine"]
+        Saga["Saga Compensation\nCoordinator"]
+        Redact["Recursive Secret\n& PII Redactor"]
+    end
+
+    subgraph Downstream["Downstream MCP Servers"]
+        Tools["Target MCP Server\n(Databases, APIs, Payments, Git)"]
+    end
+
+    Client -->|1. tools/call (stdio)| Proxy
+    Proxy -->|2. Hash Logical Keys| FP
+    FP -->|3. Check Existing Tx| Ledger
+    Ledger -->|4. If Committed, Return Cached Receipt| Proxy
+    Proxy -->|5. Record PENDING -> EXECUTING| Ledger
+    Proxy -->|6. Forward Call| Tools
+    Tools -.->|7a. Success| Proxy
+    Tools -.->|7b. Timeout / Network Drop| Verifier
+    Verifier -->|8. Query External State| Tools
+    Verifier -->|9. Reconcile Outcome| Ledger
+    Proxy -->|10. Sanitize & Redact| Redact
+    Redact -->|11. Generate Receipt| Ledger
+    Proxy -->|12. Return Result + Receipt| Client
+```
+
+---
+
+## 4. Transaction State Machine Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: Intent registered in SQLite ledger
+    PENDING --> EXECUTING: Forwarded to downstream MCP server
+
+    EXECUTING --> COMMITTED: Success response received (Receipt issued)
+    EXECUTING --> AMBIGUOUS: Network drop / Timeout / Process crash
+    EXECUTING --> FAILED: Definitive non-retryable error
+
+    AMBIGUOUS --> VERIFYING: Verifier tool triggered
+
+    VERIFYING --> COMMITTED: PROVEN_COMMITTED (State was created remotely)
+    VERIFYING --> FAILED: PROVEN_ABSENT & Retries exhausted
+    VERIFYING --> UNKNOWN_STATE: INCONCLUSIVE (Fail-Closed Safety Guard)
+
+    COMMITTED --> COMPENSATING: Saga rollback triggered
+    COMPENSATING --> COMPENSATED: Compensating tool succeeded
+
+    COMMITTED --> [*]
+    COMPENSATED --> [*]
+    FAILED --> [*]
+    UNKNOWN_STATE --> [*]
+```
+
+---
+
+## 5. Five-Minute Integration Guide
+
+### 5.1. Wrap an MCP Server via CLI
+Wrap any existing MCP server command in a single line without changing any downstream code:
 
 ```bash
-# Start AgentTX proxy wrapping a target server
-npx agenttx wrap --server "node" "path/to/server.js" --manifest "agenttx.config.json"
+npx agentx wrap --server "node" "/path/to/my-mcp-server.js" --manifest "agentx.config.json"
 ```
 
-### Option B: Configure in Claude Desktop / Cursor / Antigravity
-
+### 5.2. Configure in Claude Desktop or Cursor
 In your `claude_desktop_config.json` or `mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "clinic-service": {
+    "booking-service": {
       "command": "npx",
       "args": [
         "-y",
-        "agenttx",
+        "agentx",
         "wrap",
         "--server",
         "node",
-        "/path/to/clinic-server.js",
+        "/path/to/booking-server.js",
         "--manifest",
-        "/path/to/agenttx.config.json"
+        "/path/to/agentx.config.json"
       ]
     }
   }
 }
 ```
 
----
-
-## 6. Policy Manifest Specification (`agenttx.config.json`)
-
+### 5.3. Declare Tool Policy Manifest (`agentx.config.json`)
 ```json
 {
   "version": "1.0.0",
   "serverName": "clinic-payment-service",
-  "ledgerPath": ".agenttx/agenttx.db",
+  "ledgerPath": ".agentx/agentx.db",
   "defaultPolicy": {
     "timeoutMs": 15000,
     "maxRetries": 2,
@@ -174,73 +207,192 @@ In your `claude_desktop_config.json` or `mcp_config.json`:
           "appointmentId": "result.appointmentId"
         }
       }
+    },
+    "cancel_appointment": {
+      "toolName": "cancel_appointment",
+      "riskLevel": "MUTATING_SAFE",
+      "logicalKeys": ["appointmentId"]
     }
   }
 }
 ```
 
-### Risk Level Taxonomy
+---
 
-* `READ_ONLY`: Queries without side effects (`get_*`, `list_*`, `search_*`). Bypasses ledger for near-zero overhead.
-* `IDEMPOTENT`: Naturally idempotent operations (`set_*`, `upsert_*`). Safe to retry on failure.
-* `MUTATING_SAFE`: Non-critical mutations with known compensating rollback tools.
-* `MUTATING_CRITICAL`: Sensitive actions (payments, bookings, destructive writes). Strict fail-closed rules and verifier requirements.
+## 6. Live Interactive Demo Output
+
+Running `npm run demo` executes the live test bed demonstrating all four core operational scenarios:
+
+```text
+============================================================
+         AgentX Flagship Demonstration & Verification
+============================================================
+
+[AgentX] [INFO] Loaded AgentX manifest from examples/agentx.config.json
+[Scenario 1] Executing First Mutating Request: book_appointment
+  [Mock Server RPC] Executing tool: book_appointment (Call #1)
+[AgentX] [INFO] Transaction tx_6f2846ab committed successfully.
+  [+] Call 1 Completed.
+  [+] Receipt ID: rcpt_87127ca2e828421ca5f6aa2babe53533
+  [+] Transaction State: COMMITTED
+  [+] Idempotent Replay: false
+  [+] Sanitized Arguments stored in Ledger (PII Redacted):
+      {"patientId":"patient_4081","doctorId":"doc_dr_ayse","date":"2026-09-01","slot":"14:30","patientPhone":"[REDACTED]","medicalNote":"[REDACTED]"}
+  [+] Downstream Server RPC Invocations: 1
+
+[Scenario 2] Agent attempts duplicate call with reordered arguments (Simulating blind retry)...
+[AgentX] [INFO] Idempotent hit for book_appointment (Hash: 01c86a62c0...). Returning cached receipt.
+  [✓] AgentX Intercepted Duplicate Call!
+  [✓] Idempotent Replay Flag: true
+  [✓] Server Call Count Delta: 0 (ZERO additional calls sent to downstream server!)
+  [✓] Duplicate side-effect completely prevented.
+
+[Scenario 3] Simulating Ambiguous Outcome (Timeout on booking, but state mutated in backend)...
+  [Flaky Server RPC] Invoked: book_appointment
+[AgentX] [WARN] Attempt 1 for tx_2432f6de failed with error: Connection reset by peer / ETIMEDOUT
+[AgentX] [INFO] Starting postcondition verification for tx_2432f6de using verifier get_appointment
+  [Flaky Server RPC] Invoked: get_appointment
+[AgentX] [INFO] Postcondition verification completed: outcome=PROVEN_COMMITTED, state=COMMITTED
+[AgentX] [INFO] Postcondition verification proved tx_2432f6de was already COMMITTED!
+  [✓] AgentX Automatically Executed Postcondition Verifier: get_appointment
+  [✓] Reconciled Final State: COMMITTED
+  [✓] Verification Evidence:
+      {"verifierArgs":{"patientId":"patient_9921","date":"2026-09-02"},"response":{"appointmentId":"appt_patient_9921_2026-09-02","status":"CONFIRMED"}}
+  [✓] Ambiguity successfully resolved without duplicate execution!
+
+[Scenario 4] Executing Saga Compensation for first appointment...
+[AgentX] [INFO] Executing compensation for transaction tx_6f2846ab using tool cancel_appointment
+  [Mock Server RPC] Executing tool: cancel_appointment (Call #4)
+[AgentX] [INFO] Compensation finished: status=SUCCESS, finalState=COMPENSATED
+  [✓] Compensation Status: SUCCESS
+  [✓] Final Transaction State in Ledger: COMPENSATED
+  [✓] Appointment Store Count: 2 (Appointment cancelled)
+
+============================================================
+        Demo Finished: All Transactional Invariants Verified!
+============================================================
+```
 
 ---
 
-## 7. Interactive Demonstration
+## 7. Cryptographic & Evidence-Backed Receipt Format
 
-Run the comprehensive end-to-end simulation:
+Every transactional mutation yields a cryptographically verifiable JSON receipt stored in the ledger:
 
-```bash
-npm run demo
+```json
+{
+  "receiptId": "rcpt_ea07175f9a844ed9943ab1a57ce575a5",
+  "transactionId": "tx_2432f6de1f904180afaecc2c4a2a9d8b",
+  "fingerprint": "fc67aab5c3fb8a0a49cf0806b5ae4970aebe18dcb50c38d167045174756a705a",
+  "toolName": "book_appointment",
+  "state": "COMMITTED",
+  "riskLevel": "MUTATING_CRITICAL",
+  "idempotentReplay": false,
+  "createdAt": "2026-08-24T18:46:36.507Z",
+  "committedAt": "2026-08-24T18:46:36.512Z",
+  "sanitizedArguments": {
+    "patientId": "patient_9921",
+    "doctorId": "doc_dr_mehmet",
+    "date": "2026-09-02",
+    "slot": "10:00"
+  },
+  "result": {
+    "appointmentId": "appt_patient_9921_2026-09-02",
+    "status": "CONFIRMED"
+  },
+  "attemptsCount": 1,
+  "verificationEvidence": {
+    "verifierArgs": {
+      "patientId": "patient_9921",
+      "date": "2026-09-02"
+    },
+    "response": {
+      "appointmentId": "appt_patient_9921_2026-09-02",
+      "status": "CONFIRMED"
+    }
+  }
+}
 ```
-
-The interactive demo demonstrates all 4 core scenarios:
-1. **Initial Mutating Execution & Redaction** (scrubbing sensitive patient data).
-2. **Duplicate Replay Prevention** (reordering arguments; verifying zero downstream duplicate calls).
-3. **Flaky Network Timeout Recovery** (reconciling state via `get_appointment` postcondition verifier).
-4. **Saga Compensation** (rolling back committed appointment).
 
 ---
 
 ## 8. CLI Reference
 
-AgentTX includes a developer and operator CLI for inspecting transactions and diagnosing ledger health:
+AgentX provides a complete CLI for operators and developers:
 
 ```bash
-# List recent transactions
-agenttx list --state COMMITTED --limit 10
+# 1. Start the transparent transactional proxy
+agentx wrap --server "node" "dist/server.js" --manifest "agentx.config.json"
 
-# Inspect transaction details and attempt history
-agenttx status tx_de6569d3076d48cbad71a8604bd4473f
+# 2. List recent ledger transactions
+agentx list --state COMMITTED --limit 10
 
-# Output cryptographic JSON receipt
-agenttx receipt tx_de6569d3076d48cbad71a8604bd4473f
+# Output as structured JSON
+agentx list --json
 
-# Run database integrity and health diagnostics
-agenttx doctor
+# 3. Inspect detailed attempt history and state transitions
+agentx status tx_2432f6de1f904180afaecc2c4a2a9d8b
+
+# 4. Export verifiable receipt JSON
+agentx receipt tx_2432f6de1f904180afaecc2c4a2a9d8b
+
+# 5. Run database health and configuration integrity doctor
+agentx doctor --manifest agentx.config.json
 ```
 
----
+### Environment Variables
 
-## 9. Performance & Benchmarks
-
-* **Storage Engine:** SQLite 3 WAL Mode.
-* **Latency Overhead:** `< 1.45 ms` per mutating tool call (includes canonicalization, SHA-256 hash, SQLite insert/update).
-* **Read-Only Passthrough:** `< 0.05 ms` overhead (direct memory bypass).
-* **Memory Footprint:** `< 28 MB` RSS in production proxy mode.
-
----
-
-## 10. Technical Documentation
-
-* [Research & Prior Art Analysis](docs/RESEARCH.md)
-* [System Architecture & State Machine Specification](docs/ARCHITECTURE.md)
-* [JSON-RPC Wire Protocol & Receipt Specification](docs/PROTOCOL.md)
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `AGENTX_DB_PATH` | Path to durable SQLite ledger database | `.agentx/agentx.db` |
+| `AGENTX_CONFIG` | Path to policy manifest configuration file | `agentx.config.json` |
+| `AGENTX_LOG_LEVEL` | Diagnostic log level (`DEBUG`, `INFO`, `WARN`, `ERROR`, `SILENT`) | `INFO` |
 
 ---
 
-## 11. License
+## 9. Comparison: Architectural Landscape
 
-MIT License. Copyright (c) 2026 AgentTX Core Maintainers.
+| Feature / Dimension | Raw MCP | Simple Retry Loop | Traditional HTTP Idempotency (Stripe/AWS) | Temporal / Cadence | Academic Cordon (2025/2026) | **AgentX** |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Zero Code Changes to Tools** | Yes | Yes | No (requires header rewrite) | No (heavy SDK rewrite) | No (custom sandbox) | **Yes (Transparent Proxy)** |
+| **Local-First & Zero-Cloud** | Yes | Yes | No (Redis/DynamoDB) | No (Cluster backend) | Yes | **Yes (Local SQLite WAL)** |
+| **Deterministic Logical Hashing**| No | No | Header-dependent | Workflow replay | State sandbox | **Yes (Canonical SHA-256)** |
+| **Active Postcondition Verifier** | No | No | No | No | No | **Yes (State Reconciliation)** |
+| **Saga-Style Reverse Rollback** | No | No | No | Custom code | Shadow state | **Yes (Declarative LIFO)** |
+| **Automatic Secret Redaction** | No | No | Manual | Manual | No | **Yes (Recursive scrubbing)** |
+| **Fail-Closed Safety Guard** | No | No | No | Retry loop | Staging abort | **Yes (`UNKNOWN_STATE` lock)** |
+
+---
+
+## 10. Honest Limitations & Boundaries
+
+AgentX is engineered for practical and rigorous operational reliability, but it is not magic:
+1. **Not Universal Distributed 2PC:** Third-party web APIs that lack query/verifier endpoints or idempotency keys cannot be made 100% atomic if they fail ambiguously. AgentX protects against duplicate execution by failing closed (`UNKNOWN_STATE`).
+2. **Requires Verifier Declarations for Complex APIs:** To prove state after a dropped connection, an inspection tool (e.g., `get_payment_status`, `check_ticket`) should be declared in the manifest.
+3. **Local-First Disk Requirement:** The SQLite WAL ledger requires access to local persistent storage.
+
+---
+
+## 11. Roadmap
+
+- [x] **v1.0.0:** Deterministic fingerprinting, SQLite WAL ledger, active verifier engine, saga coordinator, stdio proxy, CLI, secret redactor.
+- [ ] **v1.1.0:** Remote Streamable HTTP / SSE transport proxy support.
+- [ ] **v1.2.0:** Auto-synthesizing verifier schemas directly from OpenAPI / MCP schema metadata.
+- [ ] **v1.3.0:** Local web-based interactive visual ledger explorer.
+
+---
+
+## 12. Community & Contributing
+
+We welcome contributions to expand the transactional reliability frontier for AI agents!
+
+* **Contributing Guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+* **Security Disclosures:** See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+* **Code of Conduct:** See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+* **Changelog:** See [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## 13. License
+
+[MIT License](LICENSE). Copyright (c) 2026 AgentX Core Maintainers.

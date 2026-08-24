@@ -1,0 +1,53 @@
+name: Bug Report
+description: Create a report to help us improve AgentX
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in AgentX!
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: How can maintainers reproduce this issue?
+      placeholder: |
+        1. Configured agentx.config.json with tool '...'
+        2. Started proxy: agentx wrap --server ...
+        3. Executed tool call ...
+        4. Observed error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: OS version, Node.js version, AgentX version, MCP client/server used.
+      value: |
+        - OS: [e.g. macOS 15, Ubuntu 24.04]
+        - Node.js Version: [e.g. 20.15.0, 22.4.0]
+        - AgentX Version: [e.g. 1.0.0]
+        - MCP Client: [e.g. Claude Desktop, Cursor, Custom SDK]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic Logs / Receipts
+      description: Please paste relevant stderr logs or redacted receipt JSON.
+      render: shell

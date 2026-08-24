@@ -1,5 +1,5 @@
 /**
- * AgentTX SQLite Database Connection Manager
+ * AgentX SQLite Database Connection Manager
  */
 
 import Database, { Database as DatabaseType } from 'better-sqlite3';
@@ -12,7 +12,7 @@ export class DatabaseManager {
   private db: DatabaseType;
   private dbPath: string;
 
-  constructor(dbPath: string = '.agenttx/agenttx.db') {
+  constructor(dbPath: string = process.env.AGENTX_DB_PATH || '.agentx/agentx.db') {
     this.dbPath = dbPath;
 
     if (dbPath !== ':memory:') {

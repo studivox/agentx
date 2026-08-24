@@ -1,5 +1,10 @@
 node_modules
 dist
+.agentx
 .agenttx
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 .DS_Store
 *.log

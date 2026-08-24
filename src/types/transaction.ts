@@ -1,5 +1,5 @@
 /**
- * AgentTX Transaction Types & State Machine Definitions
+ * AgentX Transaction Types & State Machine Definitions
  */
 
 export type TransactionState =

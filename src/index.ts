@@ -1,5 +1,5 @@
 /**
- * AgentTX: Local-First Transactional Reliability Layer & Proxy for MCP Tools
+ * AgentX: Local-First Transactional Reliability Layer & Proxy for MCP Tools
  */
 
 export * from './types/transaction.js';

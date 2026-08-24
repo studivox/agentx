@@ -1,5 +1,5 @@
 /**
- * AgentTX Active Postcondition Verification Engine
+ * AgentX Active Postcondition Verification Engine
  * Reconciles ambiguous states by querying external state via verifier tools.
  */
 

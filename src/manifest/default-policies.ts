@@ -1,5 +1,5 @@
 /**
- * AgentTX Default Policy Rules & Dynamic Tool Classification
+ * AgentX Default Policy Rules & Dynamic Tool Classification
  */
 
 import { ToolPolicy } from '../types/manifest.js';

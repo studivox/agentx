@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { inferRiskLevel, createDefaultPolicy } from '../src/manifest/default-policies.js';
-import { AgentTXManifestSchema } from '../src/types/manifest.js';
+import { AgentXManifestSchema } from '../src/types/manifest.js';
 import { ManifestLoader } from '../src/manifest/manifest-loader.js';
 
 describe('Manifest Schema & Default Policies', () => {
@@ -53,7 +53,7 @@ describe('Manifest Schema & Default Policies', () => {
       },
     };
 
-    const parsed = AgentTXManifestSchema.parse(raw);
+    const parsed = AgentXManifestSchema.parse(raw);
     expect(parsed.version).toBe('1.0.0');
     expect(parsed.tools.pay.riskLevel).toBe('MUTATING_CRITICAL');
     expect(parsed.tools.pay.verifier?.toolName).toBe('check_pay');

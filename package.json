@@ -1,13 +1,27 @@
 {
-  "name": "agenttx",
+  "name": "@studivox/agentx",
   "version": "1.0.0",
-  "description": "Local-first transactional reliability layer and proxy for Model Context Protocol (MCP) tool execution",
+  "description": "Transactional reliability layer and proxy for Model Context Protocol (MCP) tool execution",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "agenttx": "./dist/cli.js"
+    "agentx": "./dist/cli.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/studivox/agentx.git"
+  },
+  "homepage": "https://github.com/studivox/agentx#readme",
+  "bugs": {
+    "url": "https://github.com/studivox/agentx/issues"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
@@ -27,7 +41,7 @@
     "saga",
     "sqlite"
   ],
-  "author": "AgentTX Core Team",
+  "author": "AgentX Core Team",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

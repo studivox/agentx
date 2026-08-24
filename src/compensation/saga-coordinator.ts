@@ -1,5 +1,5 @@
 /**
- * AgentTX Saga Compensation Coordinator
+ * AgentX Saga Compensation Coordinator
  * Executes compensating actions to roll back partial side-effects and composite transactions.
  */
 

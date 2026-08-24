@@ -3,9 +3,9 @@ import { TransactionLedger } from '../src/ledger/transaction-ledger.js';
 import { execSync } from 'node:child_process';
 import { unlinkSync, existsSync } from 'node:fs';
 
-const TEST_DB = '.agenttx/test_cli_agenttx.db';
+const TEST_DB = '.agentx/test_cli_agentx.db';
 
-describe('AgentTX CLI Suite', () => {
+describe('AgentX CLI Suite', () => {
   beforeEach(() => {
     if (existsSync(TEST_DB)) {
       try { unlinkSync(TEST_DB); } catch { /* ignore */ }
@@ -38,7 +38,7 @@ describe('AgentTX CLI Suite', () => {
 
   it('should run doctor command successfully', () => {
     const output = execSync(`npx tsx src/cli.ts doctor --db ${TEST_DB}`).toString();
-    expect(output).toContain('AgentTX System Doctor');
+    expect(output).toContain('AgentX System Doctor');
     expect(output).toContain('SQLite Ledger: Online');
     expect(output).toContain('Total transactions recorded: 2');
     expect(output).toContain('Found 1 transaction(s) in UNKNOWN_STATE');

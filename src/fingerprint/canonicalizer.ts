@@ -1,5 +1,5 @@
 /**
- * AgentTX Deterministic JSON Canonicalization and Logical Idempotency Fingerprinter
+ * AgentX Deterministic JSON Canonicalization and Logical Idempotency Fingerprinter
  */
 
 import { createHash } from 'node:crypto';

@@ -1,5 +1,5 @@
 /**
- * AgentTX Transactional MCP Interceptor
+ * AgentX Transactional MCP Interceptor
  * Intercepts MCP tools/call requests, enforcing idempotency, ledgering, verification, and receipts.
  */
 
@@ -69,9 +69,10 @@ export class MCPInterceptor {
               type: 'text',
               text: existingTx.resultPayload
                 ? JSON.stringify(JSON.parse(existingTx.resultPayload))
-                : `[AgentTX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
+                : `[AgentX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
             },
           ],
+          _agentxReceipt: receipt,
           _agenttxReceipt: receipt,
         };
       }
@@ -83,7 +84,7 @@ export class MCPInterceptor {
           content: [
             {
               type: 'text',
-              text: `[AgentTX Fail-Closed] Previous invocation (${existingTx.id}) left external state in an UNKNOWN_STATE. Blind retries are blocked. Manual inspection or agenttx verify required.`,
+              text: `[AgentX Fail-Closed] Previous invocation (${existingTx.id}) left external state in an UNKNOWN_STATE. Blind retries are blocked. Manual inspection or agentx status required.`,
             },
           ],
         };
@@ -149,6 +150,7 @@ export class MCPInterceptor {
           return {
             content: response.content as InterceptedToolResult['content'],
             isError: true,
+            _agentxReceipt: receipt,
             _agenttxReceipt: receipt,
           };
         }
@@ -173,6 +175,7 @@ export class MCPInterceptor {
 
         return {
           content: response.content as InterceptedToolResult['content'],
+          _agentxReceipt: receipt,
           _agenttxReceipt: receipt,
         };
       } catch (err: unknown) {
@@ -211,6 +214,7 @@ export class MCPInterceptor {
                   text: JSON.stringify(verifyResult.verification.evidence),
                 },
               ],
+              _agentxReceipt: receipt,
               _agenttxReceipt: receipt,
             };
           }
@@ -229,9 +233,10 @@ export class MCPInterceptor {
             content: [
               {
                 type: 'text',
-                text: `[AgentTX Fail-Closed] Ambiguous outcome and inconclusive postcondition verification. Manual intervention required for transaction ${tx.id}.`,
+                text: `[AgentX Fail-Closed] Ambiguous outcome and inconclusive postcondition verification. Manual intervention required for transaction ${tx.id}.`,
               },
             ],
+            _agentxReceipt: receipt,
             _agenttxReceipt: receipt,
           };
         }
@@ -249,9 +254,10 @@ export class MCPInterceptor {
             content: [
               {
                 type: 'text',
-                text: `[AgentTX Fail-Closed] Timeout on unverified critical mutating tool ${call.toolName}. Aborting retry to prevent duplicate side-effects. Transaction ID: ${tx.id}`,
+                text: `[AgentX Fail-Closed] Timeout on unverified critical mutating tool ${call.toolName}. Aborting retry to prevent duplicate side-effects. Transaction ID: ${tx.id}`,
               },
             ],
+            _agentxReceipt: receipt,
             _agenttxReceipt: receipt,
           };
         }
@@ -269,9 +275,10 @@ export class MCPInterceptor {
       content: [
         {
           type: 'text',
-          text: `[AgentTX] Execution failed after ${maxRetries} attempt(s): ${lastError?.message || 'Unknown error'}`,
+          text: `[AgentX] Execution failed after ${maxRetries} attempt(s): ${lastError?.message || 'Unknown error'}`,
         },
       ],
+      _agentxReceipt: receipt,
       _agenttxReceipt: receipt,
     };
   }

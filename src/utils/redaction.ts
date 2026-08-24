@@ -1,5 +1,5 @@
 /**
- * AgentTX Parameter & Credential Redaction Engine
+ * AgentX Parameter & Credential Redaction Engine
  * Prevents secrets, tokens, passwords, and PII from being logged or stored in receipts.
  */
 

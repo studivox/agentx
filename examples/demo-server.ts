@@ -1,5 +1,5 @@
 /**
- * Realistic Mock MCP Server for AgentTX Demo
+ * Realistic Mock MCP Server for AgentX Demo
  * Implements appointment booking and payment operations with simulated failure modes.
  */
 

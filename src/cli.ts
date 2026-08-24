@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AgentTX Command Line Interface (CLI)
+ * AgentX Command Line Interface (CLI)
  */
 
 import { Command } from 'commander';
@@ -12,8 +12,10 @@ import { TransactionState } from './types/transaction.js';
 
 const program = new Command();
 
+const DEFAULT_DB_PATH = process.env.AGENTX_DB_PATH || '.agentx/agentx.db';
+
 program
-  .name('agenttx')
+  .name('agentx')
   .description('Local-first transactional reliability layer and proxy for MCP tools')
   .version('1.0.0');
 
@@ -21,11 +23,11 @@ program
 program
   .command('proxy')
   .alias('wrap')
-  .description('Start the AgentTX transparent transactional proxy wrapping an MCP server command')
+  .description('Start the AgentX transparent transactional proxy wrapping an MCP server command')
   .requiredOption('-s, --server <command...>', 'Downstream MCP server command and arguments')
-  .option('-m, --manifest <path>', 'Path to custom AgentTX manifest (agenttx.config.json)')
-  .option('-d, --db <path>', 'Path to SQLite ledger database', '.agenttx/agenttx.db')
-  .option('-l, --log-level <level>', 'Diagnostic log level (DEBUG, INFO, WARN, ERROR, SILENT)', 'INFO')
+  .option('-m, --manifest <path>', 'Path to custom AgentX manifest (agentx.config.json)', process.env.AGENTX_CONFIG)
+  .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
+  .option('-l, --log-level <level>', 'Diagnostic log level (DEBUG, INFO, WARN, ERROR, SILENT)', process.env.AGENTX_LOG_LEVEL || 'INFO')
   .action(async (opts) => {
     setLogLevelFromName(opts.logLevel);
 
@@ -47,7 +49,7 @@ program
   .option('-s, --state <state>', 'Filter by state (PENDING, EXECUTING, COMMITTED, AMBIGUOUS, UNKNOWN_STATE, FAILED)')
   .option('-t, --tool <name>', 'Filter by tool name')
   .option('-n, --limit <number>', 'Number of records to display', '20')
-  .option('-d, --db <path>', 'Path to SQLite ledger database', '.agenttx/agenttx.db')
+  .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
   .option('--json', 'Output results as JSON')
   .action((opts) => {
     const ledger = new TransactionLedger(opts.db);
@@ -69,7 +71,7 @@ program
       return;
     }
 
-    process.stdout.write('\n=== AgentTX Transaction Ledger ===\n\n');
+    process.stdout.write('\n=== AgentX Transaction Ledger ===\n\n');
     process.stdout.write(
       `${'ID'.padEnd(26)} | ${'TOOL'.padEnd(20)} | ${'STATE'.padEnd(14)} | ${'RISK'.padEnd(16)} | ${'CREATED AT'}\n`
     );
@@ -88,7 +90,7 @@ program
   .command('status <txId>')
   .alias('inspect')
   .description('Display detailed state, attempt history, and receipts for a transaction')
-  .option('-d, --db <path>', 'Path to SQLite ledger database', '.agenttx/agenttx.db')
+  .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
   .option('--json', 'Output full details as JSON')
   .action((txId, opts) => {
     const ledger = new TransactionLedger(opts.db);
@@ -162,7 +164,7 @@ program
 program
   .command('receipt <txId>')
   .description('Print the verifiable JSON receipt for a transaction')
-  .option('-d, --db <path>', 'Path to SQLite ledger database', '.agenttx/agenttx.db')
+  .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
   .action((txId, opts) => {
     const ledger = new TransactionLedger(opts.db);
     try {
@@ -178,10 +180,10 @@ program
 program
   .command('doctor')
   .description('Validate ledger integrity, configuration validity, and stale transactions')
-  .option('-d, --db <path>', 'Path to SQLite ledger database', '.agenttx/agenttx.db')
-  .option('-m, --manifest <path>', 'Path to custom AgentTX manifest')
+  .option('-d, --db <path>', 'Path to SQLite ledger database', DEFAULT_DB_PATH)
+  .option('-m, --manifest <path>', 'Path to custom AgentX manifest')
   .action((opts) => {
-    process.stdout.write('=== AgentTX System Doctor ===\n');
+    process.stdout.write('=== AgentX System Doctor ===\n');
 
     // 1. Check manifest
     try {

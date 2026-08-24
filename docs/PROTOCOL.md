@@ -1,4 +1,4 @@
-# AgentTX Protocol Specification & Wire Format
+# AgentX Protocol Specification & Wire Format
 
 **Document Version:** 1.0.0  
 **Date:** August 24, 2026  
@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-AgentTX operates transparently over standard **Model Context Protocol (MCP) JSON-RPC 2.0** specifications. It preserves complete backwards compatibility with all existing MCP clients (Claude Desktop, Cursor, Antigravity, custom agent runtimes) and servers.
+AgentX operates transparently over standard **Model Context Protocol (MCP) JSON-RPC 2.0** specifications. It preserves complete backwards compatibility with all existing MCP clients (Claude Desktop, Cursor, Antigravity, custom agent runtimes) and servers.
 
 ---
 
@@ -23,7 +23,7 @@ AgentTX operates transparently over standard **Model Context Protocol (MCP) JSON
     "params": {}
   }
   ```
-- AgentTX queries downstream MCP server, decorates tool descriptions with the active risk level policy (`[AgentTX: MUTATING_CRITICAL]`), and returns the tool schemas.
+- AgentX queries downstream MCP server, decorates tool descriptions with the active risk level policy (`[AgentX: MUTATING_CRITICAL]`), and returns the tool schemas.
 
 ### 2.2. `tools/call`
 - Upstream client invokes a tool:
@@ -93,7 +93,7 @@ Every transactional mutation yields a cryptographically verifiable JSON receipt 
 ## 4. Idempotent Replay Protocol
 
 When an identical logical request is received:
-1. AgentTX matches the computed SHA-256 fingerprint in the local SQLite ledger.
+1. AgentX matches the computed SHA-256 fingerprint in the local SQLite ledger.
 2. If state is `COMMITTED`:
    - Downstream server is **NOT** invoked.
    - Cached response is returned immediately with `idempotentReplay: true`.

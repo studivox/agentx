@@ -1,4 +1,4 @@
-# AgentTX System Architecture & Design Specification
+# AgentX System Architecture & Design Specification
 
 **Document Version:** 1.0.0  
 **Status:** Approved  
@@ -8,12 +8,12 @@
 
 ## 1. Overview
 
-AgentTX is a local-first, zero-cloud-dependency transactional reliability layer and proxy for the **Model Context Protocol (MCP)**. It transparently interposes on MCP communication channels (over `stdio` and HTTP transports) to ensure that agent-driven side effects are executed reliably, idempotently, and safely.
+AgentX is a local-first, zero-cloud-dependency transactional reliability layer and proxy for the **Model Context Protocol (MCP)**. It transparently interposes on MCP communication channels (over `stdio` and HTTP transports) to ensure that agent-driven side effects are executed reliably, idempotently, and safely.
 
 ```
 +------------------+         JSON-RPC 2.0 (stdio)         +----------------------+
 |                  | -----------------------------------> |                      |
-|  Agent Runtime / |                                      |  AgentTX Proxy       |
+|  Agent Runtime / |                                      |  AgentX Proxy        |
 |  MCP Host        | <----------------------------------- |  (Reliability Layer) |
 |                  |             Evidence Receipt         |                      |
 +------------------+                                      +----------+-----------+
@@ -96,7 +96,7 @@ AgentTX is a local-first, zero-cloud-dependency transactional reliability layer 
 
 ### 2.4. Active Postcondition Verification Engine
 - When an execution attempt terminates ambiguously (e.g. `ETIMEDOUT`, process pipe dropped, host crash):
-  1. AgentTX halts blind retries.
+  1. AgentX halts blind retries.
   2. Resolves the configured `verifier` tool in the manifest.
   3. Constructs verifier arguments via declarative mapping (`argumentMapping`).
   4. Executes the verifier query against the downstream server.

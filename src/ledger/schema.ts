@@ -1,5 +1,5 @@
 /**
- * AgentTX SQLite DDL & Migration Scripts
+ * AgentX SQLite DDL & Migration Scripts
  */
 
 export const INITIAL_SCHEMA = `

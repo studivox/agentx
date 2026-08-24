@@ -1,5 +1,5 @@
 /**
- * AgentTX Stdio MCP Proxy Server
+ * AgentX Stdio MCP Proxy Server
  * Transparently wraps a downstream MCP server process and enforces transactional guarantees.
  */
 
@@ -43,7 +43,7 @@ export class StdioProxy {
 
     this.server = new Server(
       {
-        name: 'agenttx-proxy',
+        name: 'agentx-proxy',
         version: '1.0.0',
       },
       {
@@ -55,7 +55,7 @@ export class StdioProxy {
 
     this.client = new Client(
       {
-        name: 'agenttx-client',
+        name: 'agentx-client',
         version: '1.0.0',
       },
       {
@@ -78,8 +78,8 @@ export class StdioProxy {
             return {
               ...t,
               description: t.description
-                ? `[AgentTX: ${policy.riskLevel}] ${t.description}`
-                : `[AgentTX: ${policy.riskLevel}]`,
+                ? `[AgentX: ${policy.riskLevel}] ${t.description}`
+                : `[AgentX: ${policy.riskLevel}]`,
             };
           }),
         };
@@ -125,7 +125,7 @@ export class StdioProxy {
    * Starts downstream client connection and upstream stdio server.
    */
   public async start(): Promise<void> {
-    logger.info(`Starting AgentTX Stdio Proxy wrapping command: ${this.options.command} ${(this.options.args || []).join(' ')}`);
+    logger.info(`Starting AgentX Stdio Proxy wrapping command: ${this.options.command} ${(this.options.args || []).join(' ')}`);
 
     const sanitizedEnv: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) {
@@ -154,11 +154,11 @@ export class StdioProxy {
     // Connect upstream server to stdin/stdout
     const serverTransport = new StdioServerTransport();
     await this.server.connect(serverTransport);
-    logger.info('AgentTX Stdio Proxy is online and listening on stdin/stdout');
+    logger.info('AgentX Stdio Proxy is online and listening on stdin/stdout');
 
     // Graceful teardown hooks
     const shutdown = async () => {
-      logger.info('Shutting down AgentTX Stdio Proxy...');
+      logger.info('Shutting down AgentX Stdio Proxy...');
       try {
         await this.server.close();
         if (this.clientTransport) {

@@ -1,5 +1,5 @@
 /**
- * AgentTX Transactional Ledger Repository
+ * AgentX Transactional Ledger Repository
  * Manages atomic transaction records, state transitions, attempts, verifications, and receipts.
  */
 

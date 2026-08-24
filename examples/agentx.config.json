@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "serverName": "clinic-payment-service",
-  "ledgerPath": ".agenttx/demo_agenttx.db",
+  "ledgerPath": ".agentx/demo_agentx.db",
   "defaultPolicy": {
     "timeoutMs": 5000,
     "maxRetries": 2,
