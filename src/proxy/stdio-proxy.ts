@@ -44,7 +44,7 @@ export class StdioProxy {
     this.server = new Server(
       {
         name: 'agentx-proxy',
-        version: '0.1.0',
+        version: '0.1.1',
       },
       {
         capabilities: {
@@ -56,7 +56,7 @@ export class StdioProxy {
     this.client = new Client(
       {
         name: 'agentx-client',
-        version: '0.1.0',
+        version: '0.1.1',
       },
       {
         capabilities: {},

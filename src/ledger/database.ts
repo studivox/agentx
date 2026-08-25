@@ -5,7 +5,7 @@
 import Database, { Database as DatabaseType } from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { INITIAL_SCHEMA } from './schema.js';
+import { INITIAL_SCHEMA, migrateDatabase } from './schema.js';
 import { logger } from '../utils/logger.js';
 
 export class DatabaseManager {
@@ -20,14 +20,17 @@ export class DatabaseManager {
       mkdirSync(dir, { recursive: true });
     }
 
-    this.db = new Database(dbPath);
+    // Set busy timeout for cross-process concurrency safety
+    this.db = new Database(dbPath, { timeout: 10000 });
     this.init();
   }
 
   private init(): void {
     try {
+      this.db.pragma('busy_timeout = 10000');
       this.db.exec(INITIAL_SCHEMA);
-      logger.debug(`SQLite database initialized at ${this.dbPath}`);
+      migrateDatabase(this.db);
+      logger.debug(`SQLite database initialized and migrated at ${this.dbPath}`);
     } catch (err) {
       logger.error(`Failed to initialize SQLite database at ${this.dbPath}:`, err);
       throw err;

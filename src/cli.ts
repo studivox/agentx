@@ -17,7 +17,7 @@ const DEFAULT_DB_PATH = process.env.AGENTX_DB_PATH || '.agentx/agentx.db';
 program
   .name('agentx')
   .description('Local-first transactional reliability layer and proxy for MCP tools')
-  .version('0.1.0');
+  .version('0.1.1');
 
 // 1. PROXY / WRAP COMMAND
 program

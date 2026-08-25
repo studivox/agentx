@@ -5,6 +5,19 @@ All notable changes to **AgentX** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-08-25
+
+### Security & Concurrency Patch Release
+
+#### Fixed & Hardened
+- **Durable Cross-Process Execution Leases:** Added SQLite-backed atomic lease claiming (`claimExecutionLease`) with bounded expiry and polling, guaranteeing exactly one downstream execution across concurrent independent Node.js processes sharing a ledger.
+- **Zero Plaintext Secret Storage (CVE Patch):** Ensured all arguments, error payloads, attempt snippets, and metadata are scrubbed and sanitized before being written to SQLite (`transactions.raw_arguments`, `attempts.response_snippet`).
+- **Deep JSON String Redaction:** Enhanced the redaction engine to recursively parse, scrub, and re-serialize stringified JSON payloads found in tool responses, error messages, and logs.
+- **Adversarial Verifier Protection:** Hardened `VerifierEngine` to require strict structured JSON path matching and reject unstructured error text containing matching keywords (preventing false `PROVEN_COMMITTED` states).
+- **Idempotent Database Migrations:** Implemented automatic on-startup schema migration (`migrateDatabase`) that adds lease columns and scrubs legacy plaintext records safely without corruption.
+- **Saga Payload Resolution:** Enhanced `SagaCoordinator` argument extraction to support nested MCP JSON response structures.
+- **CLI & Proxy Version Alignment:** Synchronized CLI version reporting with package release metadata.
+
 ## [0.1.0] - 2026-08-25
 
 ### Initial Public Preview Release

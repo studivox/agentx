@@ -83,4 +83,6 @@ export interface TransactionRecord {
   errorPayload?: string; // JSON string
   receiptJson?: string; // JSON string of full receipt
   metadataJson?: string; // JSON string of runtime metadata
+  leaseOwner?: string; // Process identifier holding execution lease
+  leaseExpiresAt?: string; // Timestamp when execution lease expires
 }
