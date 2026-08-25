@@ -11,12 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed & Hardened
 - **Durable Cross-Process Execution Leases:** Added SQLite-backed atomic lease claiming (`claimExecutionLease`) with bounded expiry and polling, guaranteeing exactly one downstream execution across concurrent independent Node.js processes sharing a ledger.
-- **Zero Plaintext Secret Storage (CVE Patch):** Ensured all arguments, error payloads, attempt snippets, and metadata are scrubbed and sanitized before being written to SQLite (`transactions.raw_arguments`, `attempts.response_snippet`).
+- **Zero Plaintext Secret Storage (Security Patch):** Ensured all arguments, error payloads, attempt snippets, and metadata are scrubbed and sanitized before being written to SQLite (`transactions.raw_arguments`, `attempts.response_snippet`).
 - **Deep JSON String Redaction:** Enhanced the redaction engine to recursively parse, scrub, and re-serialize stringified JSON payloads found in tool responses, error messages, and logs.
 - **Adversarial Verifier Protection:** Hardened `VerifierEngine` to require strict structured JSON path matching and reject unstructured error text containing matching keywords (preventing false `PROVEN_COMMITTED` states).
 - **Idempotent Database Migrations:** Implemented automatic on-startup schema migration (`migrateDatabase`) that adds lease columns and scrubs legacy plaintext records safely without corruption.
 - **Saga Payload Resolution:** Enhanced `SagaCoordinator` argument extraction to support nested MCP JSON response structures.
 - **CLI & Proxy Version Alignment:** Synchronized CLI version reporting with package release metadata.
+
+#### Upgrade & Migration Guidance for v0.1.0 Users
+- **Automatic Migration:** Upgrading to `v0.1.1` automatically migrates existing SQLite ledger files (`.agentx/agentx.db`) by adding concurrency lease columns and scrubbing standard sensitive patterns (passwords, tokens, API keys, cards, CVVs, SSNs, phone numbers).
+- **Custom Sensitive Fields Notice:** Custom/proprietary sensitive field names configured via custom manifests cannot be automatically inferred for historical v0.1.0 records. If you logged proprietary secrets under custom field names in `v0.1.0`, we recommend deleting the legacy ledger file or performing manual review and credential rotation.
 
 ## [0.1.0] - 2026-08-25
 
