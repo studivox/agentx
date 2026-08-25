@@ -102,7 +102,7 @@ export function computeFingerprint(
   const canonicalPayload = toCanonicalJSON(extractedKeys);
 
   const hashInput = explicitIdempotencyKey
-    ? `tx:${toolName}:custom:${explicitIdempotencyKey}:${canonicalPayload}`
+    ? `tx:${toolName}:custom:${explicitIdempotencyKey}`
     : `tx:${toolName}:auto:${canonicalPayload}`;
 
   const hash = createHash('sha256').update(hashInput, 'utf8').digest('hex');

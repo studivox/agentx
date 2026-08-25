@@ -1,6 +1,6 @@
 /**
  * AgentX Parameter & Credential Redaction Engine
- * Prevents secrets, tokens, passwords, and PII from being logged or stored in receipts.
+ * Prevents secrets, tokens, passwords, and PII from being logged or stored in receipts or ledgers.
  */
 
 const DEFAULT_SENSITIVE_KEY_PATTERNS = [
@@ -10,9 +10,14 @@ const DEFAULT_SENSITIVE_KEY_PATTERNS = [
   /api[_-]?key/i,
   /bearer/i,
   /credit[_-]?card/i,
+  /card[_-]?number/i,
   /cvv/i,
+  /cvc/i,
   /private[_-]?key/i,
   /ssn/i,
+  /pin/i,
+  /patient[_-]?phone/i,
+  /medical[_-]?note/i,
 ];
 
 export function redactSensitiveData<T>(
@@ -21,6 +26,21 @@ export function redactSensitiveData<T>(
 ): T {
   if (data === null || data === undefined) {
     return data;
+  }
+
+  if (typeof data === 'string') {
+    const trimmed = data.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          return JSON.stringify(redactSensitiveData(parsed, customSensitiveFields)) as unknown as T;
+        }
+      } catch {
+        // Return original string if not valid JSON
+      }
+    }
+    return data as T;
   }
 
   if (typeof data !== 'object') {
@@ -44,6 +64,20 @@ export function redactSensitiveData<T>(
       result[key] = redactSensitiveData(value, customSensitiveFields);
     } else if (isCustomMatch || isPatternMatch) {
       result[key] = '[REDACTED]';
+    } else if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed === 'object') {
+            result[key] = JSON.stringify(redactSensitiveData(parsed, customSensitiveFields));
+            continue;
+          }
+        } catch {
+          // Keep raw string
+        }
+      }
+      result[key] = value;
     } else {
       result[key] = value;
     }

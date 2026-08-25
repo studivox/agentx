@@ -25,6 +25,8 @@ export interface CreateTransactionParams {
   sensitiveFields?: string[];
   ttlSeconds?: number;
   metadata?: Record<string, unknown>;
+  leaseOwner?: string;
+  leaseDurationMs?: number;
 }
 
 export interface ListTransactionsFilter {
@@ -49,7 +51,7 @@ export class TransactionLedger {
   }
 
   /**
-   * Registers an initial intent transaction in PENDING state.
+   * Registers an initial intent transaction in PENDING or EXECUTING state.
    */
   public createTransaction(params: CreateTransactionParams): TransactionRecord {
     const now = new Date().toISOString();
@@ -58,31 +60,159 @@ export class TransactionLedger {
 
     const ttl = params.ttlSeconds || 86400 * 7;
     const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    const leaseExpiresAt = params.leaseDurationMs
+      ? new Date(Date.now() + params.leaseDurationMs).toISOString()
+      : null;
 
     const stmt = this.db.prepare(`
       INSERT INTO transactions (
         id, fingerprint, tool_name, state, risk_level, created_at, updated_at, expires_at,
-        raw_arguments, sanitized_arguments, metadata_json
+        raw_arguments, sanitized_arguments, metadata_json, lease_owner, lease_expires_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `);
 
-    stmt.run(
-      id,
-      params.fingerprint,
-      params.toolName,
-      'PENDING',
-      params.riskLevel,
-      now,
-      now,
-      expiresAt,
-      JSON.stringify(params.rawArguments),
-      JSON.stringify(sanitized),
-      params.metadata ? JSON.stringify(params.metadata) : null
-    );
+    const sanitizedMeta = params.metadata ? redactSensitiveData(params.metadata, params.sensitiveFields) : null;
 
-    return this.getTransactionById(id)!;
+    try {
+      stmt.run(
+        id,
+        params.fingerprint,
+        params.toolName,
+        'PENDING',
+        params.riskLevel,
+        now,
+        now,
+        expiresAt,
+        JSON.stringify(sanitized),
+        JSON.stringify(sanitized),
+        sanitizedMeta ? JSON.stringify(sanitizedMeta) : null,
+        params.leaseOwner || null,
+        leaseExpiresAt
+      );
+
+      return this.getTransactionById(id)!;
+    } catch (err: any) {
+      if (err && typeof err.message === 'string' && err.message.includes('UNIQUE constraint failed')) {
+        const existing = this.getTransactionByFingerprint(params.fingerprint);
+        if (existing) {
+          return existing;
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Atomically claims an execution lease across multiple concurrent processes.
+   * Guarantees only one process holds the active lease at any time.
+   */
+  public claimExecutionLease(
+    params: CreateTransactionParams,
+    ownerId: string,
+    leaseDurationMs: number = 6000
+  ): { claimed: boolean; transaction: TransactionRecord; isNew: boolean } {
+    const safeLeaseMs = typeof leaseDurationMs === 'number' && !isNaN(leaseDurationMs) ? leaseDurationMs : 6000;
+    const claimTx = this.db.transaction(() => {
+      const existing = this.getTransactionByFingerprint(params.fingerprint);
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      const leaseExpiresAt = new Date(now + safeLeaseMs).toISOString();
+
+      if (!existing) {
+        const id = `tx_${randomUUID().replace(/-/g, '')}`;
+        const sanitized = redactSensitiveData(params.rawArguments, params.sensitiveFields);
+        const ttl = params.ttlSeconds || 86400 * 7;
+        const expiresAt = new Date(now + ttl * 1000).toISOString();
+        const sanitizedMeta = params.metadata ? redactSensitiveData(params.metadata, params.sensitiveFields) : null;
+
+        const insertStmt = this.db.prepare(`
+          INSERT INTO transactions (
+            id, fingerprint, tool_name, state, risk_level, created_at, updated_at, expires_at,
+            raw_arguments, sanitized_arguments, metadata_json, lease_owner, lease_expires_at
+          ) VALUES (
+            ?, ?, ?, 'EXECUTING', ?, ?, ?, ?, ?, ?, ?, ?, ?
+          )
+        `);
+
+        insertStmt.run(
+          id,
+          params.fingerprint,
+          params.toolName,
+          params.riskLevel,
+          nowIso,
+          nowIso,
+          expiresAt,
+          JSON.stringify(sanitized),
+          JSON.stringify(sanitized),
+          sanitizedMeta ? JSON.stringify(sanitizedMeta) : null,
+          ownerId,
+          leaseExpiresAt
+        );
+
+        return {
+          claimed: true,
+          transaction: this.getTransactionById(id)!,
+          isNew: true,
+        };
+      }
+
+      // Existing transaction check
+      if (existing.state === 'COMMITTED' || existing.state === 'UNKNOWN_STATE' || existing.state === 'FAILED') {
+        return {
+          claimed: false,
+          transaction: existing,
+          isNew: false,
+        };
+      }
+
+      // Active execution or pending check
+      const currentExpiry = existing.leaseExpiresAt ? new Date(existing.leaseExpiresAt).getTime() : 0;
+      const hasLiveOwner = currentExpiry > now && existing.leaseOwner && existing.leaseOwner !== ownerId;
+
+      if (hasLiveOwner) {
+        // Another active process currently owns the execution lease
+        return {
+          claimed: false,
+          transaction: existing,
+          isNew: false,
+        };
+      }
+
+      // Previous lease expired or unassigned: claim execution lease atomically
+      const claimStmt = this.db.prepare(`
+        UPDATE transactions
+        SET state = 'EXECUTING',
+            lease_owner = ?,
+            lease_expires_at = ?,
+            updated_at = ?
+        WHERE id = ?
+      `);
+      claimStmt.run(ownerId, leaseExpiresAt, nowIso, existing.id);
+
+      return {
+        claimed: true,
+        transaction: this.getTransactionById(existing.id)!,
+        isNew: false,
+      };
+    });
+
+    return claimTx.immediate();
+  }
+
+  /**
+   * Releases an execution lease.
+   */
+  public releaseExecutionLease(id: string): void {
+    const stmt = this.db.prepare(`
+      UPDATE transactions
+      SET lease_owner = NULL,
+          lease_expires_at = NULL,
+          updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(new Date().toISOString(), id);
   }
 
   /**
@@ -95,7 +225,8 @@ export class TransactionLedger {
         created_at as createdAt, updated_at as updatedAt, expires_at as expiresAt,
         raw_arguments as rawArguments, sanitized_arguments as sanitizedArguments,
         result_payload as resultPayload, error_payload as errorPayload,
-        receipt_json as receiptJson, metadata_json as metadataJson
+        receipt_json as receiptJson, metadata_json as metadataJson,
+        lease_owner as leaseOwner, lease_expires_at as leaseExpiresAt
       FROM transactions
       WHERE id = ?
     `);
@@ -114,7 +245,8 @@ export class TransactionLedger {
         created_at as createdAt, updated_at as updatedAt, expires_at as expiresAt,
         raw_arguments as rawArguments, sanitized_arguments as sanitizedArguments,
         result_payload as resultPayload, error_payload as errorPayload,
-        receipt_json as receiptJson, metadata_json as metadataJson
+        receipt_json as receiptJson, metadata_json as metadataJson,
+        lease_owner as leaseOwner, lease_expires_at as leaseExpiresAt
       FROM transactions
       WHERE fingerprint = ?
     `);
@@ -143,16 +275,24 @@ export class TransactionLedger {
           updated_at = ?,
           result_payload = COALESCE(?, result_payload),
           error_payload = COALESCE(?, error_payload),
-          receipt_json = COALESCE(?, receipt_json)
+          receipt_json = COALESCE(?, receipt_json),
+          lease_owner = CASE WHEN ? IN ('COMMITTED', 'FAILED', 'UNKNOWN_STATE', 'COMPENSATED') THEN NULL ELSE lease_owner END,
+          lease_expires_at = CASE WHEN ? IN ('COMMITTED', 'FAILED', 'UNKNOWN_STATE', 'COMPENSATED') THEN NULL ELSE lease_expires_at END
       WHERE id = ?
     `);
+
+    const sanitizedResult = extra?.resultPayload ? redactSensitiveData(extra.resultPayload) : null;
+    const sanitizedError = extra?.errorPayload ? redactSensitiveData(extra.errorPayload) : null;
+    const sanitizedReceipt = extra?.receipt ? redactSensitiveData(extra.receipt) : null;
 
     stmt.run(
       state,
       now,
-      extra?.resultPayload ? JSON.stringify(extra.resultPayload) : null,
-      extra?.errorPayload ? JSON.stringify(extra.errorPayload) : null,
-      extra?.receipt ? JSON.stringify(extra.receipt) : null,
+      sanitizedResult ? JSON.stringify(sanitizedResult) : null,
+      sanitizedError ? JSON.stringify(sanitizedError) : null,
+      sanitizedReceipt ? JSON.stringify(sanitizedReceipt) : null,
+      state,
+      state,
       id
     );
 
@@ -173,6 +313,15 @@ export class TransactionLedger {
       )
     `);
 
+    let sanitizedSnippet = attempt.responseSnippet;
+    if (sanitizedSnippet) {
+      try {
+        sanitizedSnippet = JSON.stringify(redactSensitiveData(JSON.parse(sanitizedSnippet)));
+      } catch {
+        sanitizedSnippet = redactSensitiveData({ snippet: sanitizedSnippet }).snippet as string;
+      }
+    }
+
     stmt.run(
       id,
       attempt.transactionId,
@@ -182,7 +331,7 @@ export class TransactionLedger {
       attempt.status,
       attempt.durationMs || null,
       attempt.errorMessage || null,
-      attempt.responseSnippet || null
+      sanitizedSnippet || null
     );
 
     return {
@@ -222,13 +371,15 @@ export class TransactionLedger {
       )
     `);
 
+    const sanitizedEvidence = redactSensitiveData(verification.evidence);
+
     stmt.run(
       id,
       verification.transactionId,
       verification.verifierTool,
       verification.verifiedAt,
       verification.outcome,
-      JSON.stringify(verification.evidence),
+      JSON.stringify(sanitizedEvidence),
       verification.notes || null
     );
 
@@ -285,13 +436,15 @@ export class TransactionLedger {
       )
     `);
 
+    const sanitizedResult = compensation.result ? redactSensitiveData(compensation.result) : null;
+
     stmt.run(
       id,
       compensation.transactionId,
       compensation.compensatorTool,
       compensation.attemptedAt,
       compensation.status,
-      compensation.result ? JSON.stringify(compensation.result) : null,
+      sanitizedResult ? JSON.stringify(sanitizedResult) : null,
       compensation.errorMessage || null
     );
 
@@ -337,25 +490,19 @@ export class TransactionLedger {
   }
 
   /**
-   * Generates or fetches an evidence-backed receipt for a transaction.
+   * Generates an evidence-backed JSON receipt for a transaction.
    */
-  public generateReceipt(transactionId: string, isReplay: boolean = false): Receipt {
+  public generateReceipt(transactionId: string, isReplay = false): Receipt {
     const tx = this.getTransactionById(transactionId);
     if (!tx) {
-      throw new Error(`Transaction not found: ${transactionId}`);
-    }
-
-    if (tx.receiptJson && isReplay) {
-      const stored = JSON.parse(tx.receiptJson) as Receipt;
-      return {
-        ...stored,
-        idempotentReplay: true,
-      };
+      throw new Error(`Transaction ${transactionId} not found`);
     }
 
     const attempts = this.getAttemptsForTransaction(transactionId);
     const verifications = this.getVerificationsForTransaction(transactionId);
     const compensations = this.getCompensationsForTransaction(transactionId);
+
+    const latestVerification = verifications.length > 0 ? verifications[verifications.length - 1] : undefined;
 
     const receipt: Receipt = {
       receiptId: `rcpt_${randomUUID().replace(/-/g, '')}`,
@@ -366,55 +513,51 @@ export class TransactionLedger {
       riskLevel: tx.riskLevel,
       idempotentReplay: isReplay,
       createdAt: tx.createdAt,
-      committedAt: tx.state === 'COMMITTED' ? tx.updatedAt : undefined,
+      committedAt: tx.state === 'COMMITTED' ? (tx.updatedAt || tx.createdAt) : undefined,
       sanitizedArguments: JSON.parse(tx.sanitizedArguments),
       result: tx.resultPayload ? JSON.parse(tx.resultPayload) : undefined,
       attemptsCount: attempts.length,
-      verificationEvidence: verifications.length > 0 ? verifications[verifications.length - 1].evidence : undefined,
+      verificationEvidence: latestVerification?.evidence,
       compensationHistory: compensations.length > 0 ? compensations : undefined,
     };
 
-    this.updateTransactionState(transactionId, tx.state, { receipt });
     return receipt;
   }
 
   /**
-   * Lists transactions according to optional filters.
+   * Lists transactions with optional state and tool filters.
    */
   public listTransactions(filter: ListTransactionsFilter = {}): TransactionRecord[] {
-    let sql = `
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filter.state) {
+      conditions.push('state = ?');
+      params.push(filter.state);
+    }
+
+    if (filter.toolName) {
+      conditions.push('tool_name = ?');
+      params.push(filter.toolName);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitClause = `LIMIT ${filter.limit || 50} OFFSET ${filter.offset || 0}`;
+
+    const stmt = this.db.prepare(`
       SELECT 
         id, fingerprint, tool_name as toolName, state, risk_level as riskLevel,
         created_at as createdAt, updated_at as updatedAt, expires_at as expiresAt,
         raw_arguments as rawArguments, sanitized_arguments as sanitizedArguments,
         result_payload as resultPayload, error_payload as errorPayload,
-        receipt_json as receiptJson, metadata_json as metadataJson
+        receipt_json as receiptJson, metadata_json as metadataJson,
+        lease_owner as leaseOwner, lease_expires_at as leaseExpiresAt
       FROM transactions
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+      ${whereClause}
+      ORDER BY created_at DESC
+      ${limitClause}
+    `);
 
-    if (filter.state) {
-      sql += ` AND state = ?`;
-      params.push(filter.state);
-    }
-    if (filter.toolName) {
-      sql += ` AND tool_name = ?`;
-      params.push(filter.toolName);
-    }
-
-    sql += ` ORDER BY created_at DESC`;
-
-    if (filter.limit) {
-      sql += ` LIMIT ?`;
-      params.push(filter.limit);
-    }
-    if (filter.offset) {
-      sql += ` OFFSET ?`;
-      params.push(filter.offset);
-    }
-
-    const stmt = this.db.prepare(sql);
     return stmt.all(...params) as TransactionRecord[];
   }
 }

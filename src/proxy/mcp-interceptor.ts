@@ -1,19 +1,23 @@
 /**
  * AgentX Transactional MCP Interceptor
- * Intercepts MCP tools/call requests, enforcing idempotency, ledgering, verification, and receipts.
+ * Intercepts MCP tools/call requests, enforcing cross-process idempotency, ledgering, verification, and receipts.
  */
 
+import { randomUUID } from 'node:crypto';
 import { computeFingerprint } from '../fingerprint/canonicalizer.js';
 import { TransactionLedger } from '../ledger/transaction-ledger.js';
 import { ManifestLoader } from '../manifest/manifest-loader.js';
 import { InterceptedToolCall, InterceptedToolResult } from '../types/protocol.js';
 import { ToolExecutor, VerifierEngine } from '../verification/verifier-engine.js';
 import { logger } from '../utils/logger.js';
+import { TransactionRecord } from '../types/transaction.js';
 
 export class MCPInterceptor {
   private ledger: TransactionLedger;
   private manifestLoader: ManifestLoader;
   private verifierEngine: VerifierEngine;
+  private inFlight = new Map<string, Promise<InterceptedToolResult>>();
+  private processId: string;
 
   constructor(
     ledger: TransactionLedger,
@@ -23,6 +27,7 @@ export class MCPInterceptor {
     this.ledger = ledger;
     this.manifestLoader = manifestLoader;
     this.verifierEngine = verifierEngine || new VerifierEngine(ledger);
+    this.processId = `pid_${process.pid}_${randomUUID().slice(0, 8)}`;
   }
 
   /**
@@ -55,59 +60,90 @@ export class MCPInterceptor {
 
     logger.debug(`Computed fingerprint for ${call.toolName}: ${fingerprint.hash}`);
 
-    // Step 2: Check ledger for existing transaction (Idempotency deduplication)
-    const existingTx = this.ledger.getTransactionByFingerprint(fingerprint.hash);
-
-    if (existingTx && !call.meta?.forceRefresh) {
-      if (existingTx.state === 'COMMITTED') {
-        logger.info(`Idempotent hit for ${call.toolName} (Hash: ${fingerprint.hash}). Returning cached receipt.`);
-        const receipt = this.ledger.generateReceipt(existingTx.id, true);
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: existingTx.resultPayload
-                ? JSON.stringify(JSON.parse(existingTx.resultPayload))
-                : `[AgentX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
-            },
-          ],
-          _agentxReceipt: receipt,
-          _agenttxReceipt: receipt,
-        };
-      }
-
-      if (existingTx.state === 'UNKNOWN_STATE') {
-        logger.warn(`Blocked call for ${call.toolName}: previous transaction ${existingTx.id} is in UNKNOWN_STATE (fail-closed).`);
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: `[AgentX Fail-Closed] Previous invocation (${existingTx.id}) left external state in an UNKNOWN_STATE. Blind retries are blocked. Manual inspection or agentx status required.`,
-            },
-          ],
-        };
-      }
+    // In-flight Deduplication Guard (intra-process):
+    if (this.inFlight.has(fingerprint.hash)) {
+      logger.info(`Deduplicating intra-process in-flight call for ${call.toolName} (Hash: ${fingerprint.hash})`);
+      return await this.inFlight.get(fingerprint.hash)!;
     }
 
-    // Step 3: Register intent in PENDING state
-    const tx = existingTx || this.ledger.createTransaction({
-      fingerprint: fingerprint.hash,
-      toolName: call.toolName,
-      riskLevel: policy.riskLevel,
-      rawArguments: call.arguments,
-      sensitiveFields: policy.sensitiveFields,
-      ttlSeconds: policy.ttlSeconds,
-      metadata: {
-        explicitKey: call.meta?.idempotencyKey,
-        callerMeta: call.meta,
+    const executionPromise = this.executeCoordinated(call, policy, fingerprint, executor);
+    this.inFlight.set(fingerprint.hash, executionPromise);
+
+    try {
+      return await executionPromise;
+    } finally {
+      this.inFlight.delete(fingerprint.hash);
+    }
+  }
+
+  private async executeCoordinated(
+    call: InterceptedToolCall,
+    policy: ReturnType<ManifestLoader['getPolicyForTool']>,
+    fingerprint: ReturnType<typeof computeFingerprint>,
+    executor: ToolExecutor
+  ): Promise<InterceptedToolResult> {
+    const timeoutMs = policy?.timeoutMs || 15000;
+    const leaseDurationMs = Math.max(timeoutMs * 2, 6000);
+
+    // Step 2: Atomically claim execution lease in durable SQLite ledger
+    const claimResult = this.ledger.claimExecutionLease(
+      {
+        fingerprint: fingerprint.hash,
+        toolName: call.toolName,
+        riskLevel: policy.riskLevel,
+        rawArguments: call.arguments,
+        sensitiveFields: policy.sensitiveFields,
+        ttlSeconds: policy.ttlSeconds,
+        metadata: {
+          explicitKey: call.meta?.idempotencyKey,
+          callerMeta: call.meta,
+        },
       },
-    });
+      this.processId,
+      leaseDurationMs
+    );
 
-    this.ledger.updateTransactionState(tx.id, 'EXECUTING');
+    const tx = claimResult.transaction;
 
-    // Step 4: Execution attempt loop with timeout and verification
+    // Case A: Action was already COMMITTED previously (Idempotent hit)
+    if (!claimResult.claimed && tx.state === 'COMMITTED' && !call.meta?.forceRefresh) {
+      logger.info(`Idempotent hit for ${call.toolName} (Hash: ${fingerprint.hash}). Returning cached receipt.`);
+      return this.buildCachedCommittedResult(tx);
+    }
+
+    // Case B: Action previously ended in UNKNOWN_STATE (Fail-closed)
+    if (!claimResult.claimed && tx.state === 'UNKNOWN_STATE' && !call.meta?.forceRefresh) {
+      logger.warn(`Blocked call for ${call.toolName}: previous transaction ${tx.id} is in UNKNOWN_STATE (fail-closed).`);
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `[AgentX Fail-Closed] Previous invocation (${tx.id}) left external state in an UNKNOWN_STATE. Blind retries are blocked. Manual inspection or agentx status required.`,
+          },
+        ],
+      };
+    }
+
+    // Case C: Another process or thread currently owns the active execution lease
+    if (!claimResult.claimed && (tx.state === 'EXECUTING' || tx.state === 'PENDING' || tx.state === 'VERIFYING')) {
+      logger.info(`Another process holds execution lease for transaction ${tx.id}. Awaiting cross-process resolution...`);
+      return await this.awaitCrossProcessResolution(tx.id, policy, executor);
+    }
+
+    // Case D: This process successfully claimed the execution lease!
+    return await this.executeClaimedTransaction(tx, call, policy, executor);
+  }
+
+  /**
+   * Executes the transaction with timeout and retries under active lease ownership.
+   */
+  private async executeClaimedTransaction(
+    tx: TransactionRecord,
+    call: InterceptedToolCall,
+    policy: ReturnType<ManifestLoader['getPolicyForTool']>,
+    executor: ToolExecutor
+  ): Promise<InterceptedToolResult> {
     const maxRetries = Math.max(1, policy.maxRetries || 1);
     let attemptNumber = 0;
     let lastError: Error | null = null;
@@ -221,7 +257,6 @@ export class MCPInterceptor {
 
           if (verifyResult.outcome === 'PROVEN_ABSENT') {
             logger.info(`Postcondition verification confirmed side-effect was NOT executed. Safe to proceed.`);
-            // Safe to proceed to next loop iteration if retries remaining
             continue;
           }
 
@@ -242,7 +277,6 @@ export class MCPInterceptor {
         }
 
         // No verifier available:
-        // For mutating critical tools, never blind retry on timeout/disconnect!
         if (policy.riskLevel === 'MUTATING_CRITICAL') {
           logger.error(`Mutating critical tool ${call.toolName} experienced ambiguous failure without a verifier. Failing closed to prevent duplicate side effects.`);
           this.ledger.updateTransactionState(tx.id, 'UNKNOWN_STATE', {
@@ -264,8 +298,8 @@ export class MCPInterceptor {
       }
     }
 
-    // Retries exhausted
-    this.ledger.updateTransactionState(tx.id, 'FAILED', {
+    // Retries exhausted without resolution
+    this.ledger.updateTransactionState(tx.id, 'UNKNOWN_STATE', {
       errorPayload: { error: lastError?.message || 'Retries exhausted' },
     });
     const receipt = this.ledger.generateReceipt(tx.id);
@@ -275,9 +309,134 @@ export class MCPInterceptor {
       content: [
         {
           type: 'text',
-          text: `[AgentX] Execution failed after ${maxRetries} attempt(s): ${lastError?.message || 'Unknown error'}`,
+          text: `[AgentX Fail-Closed] Retries exhausted for ${call.toolName}. State is UNKNOWN_STATE. Transaction ID: ${tx.id}`,
         },
       ],
+      _agentxReceipt: receipt,
+      _agenttxReceipt: receipt,
+    };
+  }
+
+  /**
+   * Polls SQLite ledger for transaction resolution when another process holds the lease.
+   */
+  private async awaitCrossProcessResolution(
+    transactionId: string,
+    policy: ReturnType<ManifestLoader['getPolicyForTool']>,
+    executor: ToolExecutor
+  ): Promise<InterceptedToolResult> {
+    const maxWaitMs = policy.timeoutMs + 4000;
+    const intervalMs = 25;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      const latestTx = this.ledger.getTransactionById(transactionId);
+      if (!latestTx) break;
+
+      if (latestTx.state === 'COMMITTED') {
+        logger.info(`Cross-process resolution completed: transaction ${transactionId} COMMITTED.`);
+        return this.buildCachedCommittedResult(latestTx);
+      }
+
+      if (latestTx.state === 'FAILED') {
+        const receipt = this.ledger.generateReceipt(transactionId, true);
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `[AgentX] Transaction ${transactionId} failed downstream.`,
+            },
+          ],
+          _agentxReceipt: receipt,
+          _agenttxReceipt: receipt,
+        };
+      }
+
+      if (latestTx.state === 'UNKNOWN_STATE') {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `[AgentX Fail-Closed] Transaction ${transactionId} left in UNKNOWN_STATE by previous worker process.`,
+            },
+          ],
+        };
+      }
+
+      // Check if previous worker's lease expired without resolution (crash condition)
+      const now = Date.now();
+      const leaseExpiry = latestTx.leaseExpiresAt ? new Date(latestTx.leaseExpiresAt).getTime() : 0;
+      if (leaseExpiry > 0 && leaseExpiry < now) {
+        logger.warn(`Execution lease for ${transactionId} expired. Worker process appears crashed.`);
+        if (policy.verifier) {
+          logger.info(`Executing verifier recovery for orphaned transaction ${transactionId}...`);
+          const verifyResult = await this.verifierEngine.verifyTransaction(
+            transactionId,
+            policy.verifier,
+            executor
+          );
+          if (verifyResult.outcome === 'PROVEN_COMMITTED') {
+            return this.buildCachedCommittedResult(verifyResult.updatedTransaction);
+          }
+        }
+
+        // Fail-closed if verifier absent or inconclusive
+        this.ledger.updateTransactionState(transactionId, 'UNKNOWN_STATE', {
+          errorPayload: { error: 'Worker lease expired without commitment' },
+        });
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `[AgentX Fail-Closed] Worker process crashed or lease expired for transaction ${transactionId}.`,
+            },
+          ],
+        };
+      }
+    }
+
+    // Polling timeout exceeded
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: `[AgentX Timeout] Awaiting cross-process transaction resolution exceeded ${maxWaitMs}ms for ${transactionId}.`,
+        },
+      ],
+    };
+  }
+
+  private buildCachedCommittedResult(tx: TransactionRecord): InterceptedToolResult {
+    const receipt = this.ledger.generateReceipt(tx.id, true);
+    let parsedContent: InterceptedToolResult['content'] = [
+      {
+        type: 'text',
+        text: `[AgentX] Action already committed previously. Receipt ID: ${receipt.receiptId}`,
+      },
+    ];
+
+    if (tx.resultPayload) {
+      try {
+        const parsed = JSON.parse(tx.resultPayload);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.response && Array.isArray(parsed.response.content)) {
+            parsedContent = parsed.response.content;
+          } else if (Array.isArray(parsed.content)) {
+            parsedContent = parsed.content;
+          }
+        }
+      } catch {
+        // Keep default fallback
+      }
+    }
+
+    return {
+      content: parsedContent,
       _agentxReceipt: receipt,
       _agenttxReceipt: receipt,
     };
